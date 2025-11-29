@@ -5,6 +5,7 @@ from models import sentiment_predict, qa_predict, math_predict
 from models import SENTIMENT_PROMPT, QA_PROMPT, MATH_REACT_PROMPT
 from metrics import sentiment_accuracy, qa_accuracy, math_accuracy
 from metrics import sentiment_metric, qa_metric, math_metric
+from metrics import sentiment_scorer, qa_scorer, math_scorer
 
 
 # Task Configuration Registry
@@ -16,6 +17,7 @@ TASKS = {
         "prompt_template": SENTIMENT_PROMPT,
         "prompt_name": "sentiment_classifier",
         "metric": sentiment_metric,
+        "scorer": sentiment_scorer,
         "accuracy_fn": sentiment_accuracy,
         "gepa_max_calls": 100,
         "input_fields": ["text"],
@@ -28,6 +30,7 @@ TASKS = {
         "prompt_template": QA_PROMPT,
         "prompt_name": "qa_model",
         "metric": qa_metric,
+        "scorer": qa_scorer,
         "accuracy_fn": qa_accuracy,
         "gepa_max_calls": 120,
         "input_fields": ["question", "context"],
@@ -40,6 +43,7 @@ TASKS = {
         "prompt_template": MATH_REACT_PROMPT,
         "prompt_name": "math_react_solver",
         "metric": math_metric,
+        "scorer": math_scorer,
         "accuracy_fn": math_accuracy,
         "gepa_max_calls": 80,
         "input_fields": ["problem"],

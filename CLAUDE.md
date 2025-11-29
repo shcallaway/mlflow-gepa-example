@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a modular prompt optimization project demonstrating the **GEPA (Generative Evolutionary Prompt Adaptation)** concept for automatic prompt optimization across multiple NLP tasks. The project uses direct OpenAI API calls with a task registry architecture for multi-task support.
+This is a modular prompt optimization project demonstrating the **GEPA (Generative Evolutionary Prompt Adaptation)** concept for automatic prompt optimization across multiple NLP tasks. The project uses direct OpenAI API calls with MLflow GEPA integration and a task registry architecture for multi-task support.
 
-**Current Status**: The project has been migrated from DSPy to MLflow GEPA. Baseline evaluation is fully functional, but GEPA optimization is a placeholder implementation awaiting completion.
+**Current Status**: Fully functional! The project includes both baseline evaluation and working GEPA optimization using MLflow 3.5+. All three tasks (sentiment, QA, math) support automatic prompt improvement through evolutionary optimization.
 
 ## Common Commands
 
@@ -25,20 +25,19 @@ export OPENAI_API_KEY='your-api-key-here'
 
 ### Running Tasks
 ```bash
-# Run sentiment classification (default) - baseline only
-python main.py --task sentiment --skip-optimization
-
-# Run question answering - baseline only
-python main.py --task qa --skip-optimization
-
-# Run math word problems - baseline only
-python main.py --task math --skip-optimization
-
-# Run with GEPA placeholder (shows intended workflow)
+# Run sentiment classification with GEPA optimization (default)
 python main.py --task sentiment
 
+# Run with baseline evaluation only (skip optimization)
+python main.py --task sentiment --skip-optimization
+
+# Run other tasks
+python main.py --task qa              # Question answering with GEPA
+python main.py --task math            # Math problems with GEPA
+python main.py --task qa --skip-optimization   # QA baseline only
+
 # Use python3 if python command not available
-python3 main.py --task sentiment --skip-optimization
+python3 main.py --task sentiment
 ```
 
 ## Architecture
@@ -66,7 +65,8 @@ This registry drives the generic workflow in `main.py`, allowing new tasks to be
 - Single workflow handles all tasks using dynamic field access
 - Uses `task_config["input_fields"]` to extract inputs from examples
 - Formats output based on task type (checks `input_fields` to distinguish tasks)
-- GEPA optimization is currently a placeholder (see `main.py:119-165`)
+- GEPA optimization fully implemented with MLflow integration
+- Automatic baseline vs optimized comparison and reporting
 
 **3. Modular Organization**
 ```
@@ -95,17 +95,21 @@ main.py      # Generic workflow orchestration
 - This format replaced the previous `dspy.Example` objects
 - Compatible with MLflow evaluation APIs
 
-### GEPA Optimization Flow (Placeholder)
+### GEPA Optimization Flow
 
-**Note**: The GEPA optimizer is not currently implemented. The intended flow would be:
+The complete optimization workflow:
 
-1. Baseline model evaluated using direct API calls with initial prompts
-2. MLflow GEPA optimizer would take: metric function, train data, val data
-3. Reflection LM would generate prompt variations during optimization
-4. Optimizer would compile optimized prompt using trainset and valset
-5. Optimized prompt would be evaluated on valset for comparison
+1. **Baseline Evaluation**: Initial prompt evaluated on dev set
+2. **Prompt Registration**: Prompt registered in MLflow registry
+3. **GEPA Optimization**:
+   - Creates `GepaPromptOptimizer` with reflection model
+   - Calls `mlflow.genai.optimize_prompts()` with train data
+   - Evolutionary algorithm generates and tests prompt variations
+   - Uses custom scorers for each task
+4. **Optimized Evaluation**: Best prompt evaluated on dev set
+5. **Comparison**: Reports baseline vs optimized accuracy and improvement
 
-**To complete**: See `main.py:119-165` for placeholder code and MLflow documentation.
+All experiments tracked in MLflow with automatic logging enabled.
 
 ### Adding New Tasks
 
@@ -201,27 +205,31 @@ Update `__init__.py` files in each directory to export your new functions/classe
 
 ## Dependencies
 
-- `mlflow>=3.5.0` - MLflow with GenAI features (GEPA support when implemented)
+- `mlflow>=3.5.0` - MLflow with GenAI features and GEPA optimization
 - `openai>=1.0.0` - OpenAI API client
 
 Requires Python 3.9+.
 
-## Known Limitations and TODOs
+## Features
 
-### Current Limitations
-1. **GEPA Optimization Not Implemented**: The optimizer in `main.py` is a placeholder
-2. **No Error Handling**: API calls lack try-except blocks and retry logic
-3. **Client Creation**: OpenAI client is recreated on every prediction (inefficient)
-4. **No Tests**: Migration lacks tests comparing to previous DSPy implementation
-5. **Manual ReAct**: Math task's ReAct loop could have edge cases
+### Implemented ✅
+1. **GEPA Optimization**: Full MLflow GEPA integration with evolutionary prompt optimization
+2. **Error Handling**: Retry logic with exponential backoff for rate limits and API errors
+3. **Client Singleton**: Efficient OpenAI client reuse across predictions
+4. **MLflow Tracking**: Automatic experiment tracking and logging
+5. **Custom Scorers**: Task-specific MLflow scorers using categorical ratings
+6. **Comparison Reports**: Automatic baseline vs optimized performance comparison
 
-### Priority TODOs
-1. Complete MLflow GEPA optimizer integration
-2. Add error handling and retry logic to all predict functions
-3. Implement singleton pattern for OpenAI client
-4. Add unit tests for accuracy functions
-5. Add integration tests for end-to-end workflows
-6. Document GEPA optimization workflow once implemented
+### Known Limitations
+1. **No Tests**: Migration lacks tests comparing to previous DSPy implementation
+2. **Manual ReAct**: Math task's ReAct loop could have edge cases with complex problems
+3. **Small Datasets**: Current datasets are minimal examples (for demo purposes)
+
+### Future Enhancements
+1. Add unit tests for accuracy functions
+2. Add integration tests for end-to-end workflows
+3. Expand datasets with more examples
+4. Add more task types (summarization, translation, etc.)
 
 ## Migration from DSPy
 
@@ -233,7 +241,7 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 - **Models**: `dspy.Module` classes → `predict()` functions with prompts
 - **Predictions**: Structured objects → Raw strings
 - **Metrics**: DSPy metrics → Custom accuracy functions + MLflow metrics
-- **GEPA**: DSPy GEPA optimizer → MLflow GEPA (placeholder)
+- **GEPA**: DSPy GEPA optimizer → MLflow GEPA (fully implemented)
 
 ### What Stayed the Same
 - Task registry architecture pattern
@@ -252,7 +260,7 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 - More direct control over prompts
 - Easier to understand and debug
 - Simpler dependencies
-- Preparation for MLflow GEPA integration
+- Full MLflow GEPA integration and tracking
 
 ## Troubleshooting
 
@@ -261,13 +269,15 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 **API Key Not Set**
 - Ensure `OPENAI_API_KEY` is exported: `export OPENAI_API_KEY='sk-...'`
 
-**MLflow GEPA Not Working**
-- This is expected. GEPA optimization is a placeholder. Use `--skip-optimization` flag.
+**MLflow GEPA Slow**
+- GEPA optimization can take several minutes as it evolves prompts
+- Use `--skip-optimization` flag for faster baseline-only evaluation
+- Reduce `gepa_max_calls` in `tasks.py` for faster (but less thorough) optimization
 
 **Rate Limits**
-- Add retry logic to predict functions (not currently implemented)
-- Reduce number of training examples
-- Use smaller datasets for testing
+- Automatic retry logic with exponential backoff is implemented
+- If you still hit rate limits, reduce number of training examples
+- Or increase `initial_delay` parameter in `config.py`
 
 **Module Not Found**
 - Activate virtual environment: `source venv/bin/activate`
@@ -282,3 +292,5 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 - Use the standard data format: `{"inputs": {...}, "expectations": {...}}`
 - Predict functions should return strings
 - Accuracy functions should take `(gold: Dict, pred: str)` and return `bool`
+- Scorer functions should use `@scorer` decorator and return `Feedback` objects
+- All API calls should use retry logic via `with_retry()` from config.py

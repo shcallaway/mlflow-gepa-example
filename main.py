@@ -24,6 +24,8 @@ from typing import Dict, List, Callable
 try:
     import mlflow
     import mlflow.genai
+    from mlflow.genai.optimize import optimize_prompts
+    from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
     from mlflow.models import ModelSignature
     from mlflow.types.schema import Schema, ColSpec
     MLFLOW_AVAILABLE = True
@@ -32,9 +34,10 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 from tasks import TASKS
+from config import get_default_model
 
 
-def create_predict_wrapper(task_config: Dict) -> Callable:
+def create_predict_wrapper(task_config: Dict, prompt_uri: str = None) -> Callable:
     """
     Create a wrapper function for the predict_fn that matches MLflow's expected interface.
 
@@ -43,13 +46,15 @@ def create_predict_wrapper(task_config: Dict) -> Callable:
 
     Args:
         task_config: Task configuration from TASKS registry
+        prompt_uri: Optional MLflow prompt URI (for optimized prompts)
 
     Returns:
-        Wrapped prediction function
+        Wrapped prediction function with MLflow tracing
     """
     predict_fn = task_config["predict_fn"]
     input_fields = task_config["input_fields"]
 
+    @mlflow.trace
     def wrapper(inputs: Dict) -> str:
         """Wrapper that unpacks dict inputs to function kwargs."""
         # Extract just the input fields from the inputs dict
@@ -102,16 +107,13 @@ def run_gepa_optimization(task_config: Dict, train_data: List[Dict], val_data: L
     """
     Run MLflow GEPA optimization.
 
-    NOTE: MLflow GEPA integration is still experimental. This function demonstrates
-    the intended workflow but may need adjustment based on the actual MLflow GEPA API.
-
     Args:
         task_config: Task configuration
         train_data: Training data
         val_data: Validation data
 
     Returns:
-        Optimized prompt (or None if MLflow not available)
+        Optimized prompt URI (or None if optimization fails)
     """
     if not MLFLOW_AVAILABLE:
         print("MLflow not available. Skipping optimization.")
@@ -121,56 +123,117 @@ def run_gepa_optimization(task_config: Dict, train_data: List[Dict], val_data: L
     print("-" * 60)
     print(f"Task: {task_config['name']}")
     print(f"Max GEPA calls: {task_config['gepa_max_calls']}")
+    print(f"Training examples: {len(train_data)}")
     print("This may take several minutes as GEPA evolves the prompts...")
     print()
 
     try:
-        # Create predict wrapper for MLflow
-        predict_wrapper = create_predict_wrapper(task_config)
-
         # Register the initial prompt in MLflow
         prompt_name = task_config["prompt_name"]
         prompt_template = task_config["prompt_template"]
 
         print(f"Registering initial prompt: {prompt_name}")
-        mlflow.genai.register_prompt(
+        base_prompt = mlflow.genai.register_prompt(
             name=prompt_name,
-            prompt_template=prompt_template
+            template=prompt_template
         )
-
-        # NOTE: The exact MLflow GEPA API may differ from this example.
-        # This demonstrates the conceptual workflow.
-        # Refer to MLflow documentation for the actual API:
-        # https://mlflow.org/docs/latest/genai/prompt-registry/optimize-prompts/
-
-        print("\nNote: MLflow GEPA optimization requires additional setup.")
-        print("To optimize prompts:")
-        print(f"1. Use mlflow.genai.optimize_prompts() with your predict function")
-        print(f"2. Provide train_data, validation_data, and the metric")
-        print(f"3. GEPA will evolve the prompt and register optimized versions")
+        print(f"Registered prompt URI: {base_prompt.uri}")
         print()
 
-        # Placeholder for actual GEPA optimization call
-        # When MLflow GEPA API is stable, use something like:
-        # from mlflow.genai.optimizers import GepaPromptOptimizer
-        # optimizer = GepaPromptOptimizer(
-        #     reflection_model="openai:/gpt-4o",
-        #     max_metric_calls=task_config["gepa_max_calls"]
-        # )
-        # result = mlflow.genai.optimize_prompts(
-        #     predict_fn=predict_wrapper,
-        #     train_data=train_data,
-        #     prompt_uris=[f"prompts:/{prompt_name}/1"],
-        #     optimizer=optimizer,
-        #     scorers=[task_config["metric"]]
-        # )
+        # Create predict wrapper for MLflow
+        predict_wrapper = create_predict_wrapper(task_config, base_prompt.uri)
 
-        return None
+        # Create GEPA optimizer
+        print("Creating GEPA optimizer...")
+        optimizer = GepaPromptOptimizer(
+            reflection_model=f"openai:/{get_default_model()}",
+            max_metric_calls=task_config["gepa_max_calls"]
+        )
+
+        # Run optimization
+        print("Starting optimization (this will take several minutes)...")
+        result = optimize_prompts(
+            predict_fn=predict_wrapper,
+            train_data=train_data,
+            prompt_uris=[base_prompt.uri],
+            optimizer=optimizer,
+            scorers=[task_config["scorer"]],
+            enable_tracking=True
+        )
+
+        if result and result.optimized_prompts:
+            optimized_prompt_uri = result.optimized_prompts[0].uri
+            print()
+            print(f"✓ Optimization complete!")
+            print(f"Optimized prompt URI: {optimized_prompt_uri}")
+            return optimized_prompt_uri
+        else:
+            print("\n⚠ Optimization completed but no optimized prompt returned")
+            return None
 
     except Exception as e:
-        print(f"Error during optimization: {e}")
-        print("Continuing with baseline evaluation only.")
+        print(f"\n✗ Error during optimization: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        print("\nContinuing with baseline evaluation only.")
         return None
+
+
+def evaluate_optimized_prompt(task_config: Dict, optimized_prompt_uri: str, data: List[Dict]) -> float:
+    """
+    Evaluate the optimized prompt on validation data.
+
+    Args:
+        task_config: Task configuration
+        optimized_prompt_uri: MLflow prompt URI for optimized prompt
+        data: Validation data
+
+    Returns:
+        Accuracy score
+    """
+    print("\nTesting OPTIMIZED model...")
+    print("-" * 60)
+
+    predict_wrapper = create_predict_wrapper(task_config, optimized_prompt_uri)
+    accuracy_fn = task_config["accuracy_fn"]
+
+    correct = 0
+    for example in data:
+        # Call predict function with inputs
+        prediction = predict_wrapper(example["inputs"])
+
+        # Check accuracy
+        is_correct = accuracy_fn(example, prediction)
+        correct += is_correct
+
+        # Print result
+        print_example_result(example, prediction, is_correct, task_config)
+
+    score = correct / len(data)
+    print(f"\nOptimized Accuracy: {score:.1%} ({correct}/{len(data)})")
+    print()
+    return score
+
+
+def print_comparison(baseline_score: float, optimized_score: float):
+    """Print comparison of baseline vs optimized results."""
+    print("=" * 60)
+    print("RESULTS COMPARISON")
+    print("=" * 60)
+    print(f"Baseline Accuracy:  {baseline_score:.1%}")
+    print(f"Optimized Accuracy: {optimized_score:.1%}")
+
+    improvement = optimized_score - baseline_score
+    if improvement > 0:
+        print(f"Improvement:        +{improvement:.1%} ✓")
+    elif improvement < 0:
+        print(f"Change:             {improvement:.1%} ✗")
+    else:
+        print(f"Change:             {improvement:.1%} (no change)")
+
+    print("=" * 60)
+    print()
 
 
 def print_example_result(example: Dict, prediction: str, is_correct: bool, task_config: Dict):
@@ -266,6 +329,14 @@ def main():
     # Get task configuration
     task_config = TASKS[args.task]
 
+    # Set up MLflow experiment tracking
+    if MLFLOW_AVAILABLE:
+        experiment_name = f"GEPA-{task_config['name'].replace(' ', '-')}"
+        mlflow.set_experiment(experiment_name)
+        mlflow.openai.autolog()
+        print(f"MLflow experiment: {experiment_name}")
+        print()
+
     print("=" * 60)
     print(f"MLflow GEPA: {task_config['name']}")
     print("=" * 60)
@@ -280,8 +351,14 @@ def main():
     baseline_score = run_baseline_evaluation(task_config, dev_data)
 
     # Optional: GEPA optimization
+    optimized_prompt_uri = None
     if not args.skip_optimization:
-        run_gepa_optimization(task_config, train_data, dev_data)
+        optimized_prompt_uri = run_gepa_optimization(task_config, train_data, dev_data)
+
+        # If optimization succeeded, evaluate optimized prompt
+        if optimized_prompt_uri:
+            optimized_score = evaluate_optimized_prompt(task_config, optimized_prompt_uri, dev_data)
+            print_comparison(baseline_score, optimized_score)
 
     # Demo on new examples
     demo_baseline_model(task_config)

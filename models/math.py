@@ -1,7 +1,7 @@
 """Math word problem solver using ReAct pattern."""
 
 import re
-from config import get_openai_client, get_default_model
+from config import get_openai_client, get_default_model, with_retry
 
 
 def calculate(expression: str) -> str:
@@ -128,7 +128,7 @@ def math_predict(problem: str) -> str:
     model = get_default_model()
 
     conversation = []
-    max_iterations = 2
+    max_iterations = 5  # Increased from 2 for complex problems
 
     for i in range(max_iterations):
         # Format the prompt with current conversation history
@@ -137,15 +137,17 @@ def math_predict(problem: str) -> str:
             history="\n".join(conversation)
         )
 
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
-        )
+        # Call OpenAI API with retry logic
+        def make_api_call():
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=500
+            )
+            return response.choices[0].message.content
 
-        text = response.choices[0].message.content
+        text = with_retry(make_api_call)
 
         # Check if there's a tool call (Action: calculate(...))
         if "calculate(" in text.lower():

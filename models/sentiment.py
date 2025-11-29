@@ -1,6 +1,6 @@
 """Sentiment classification model using OpenAI API."""
 
-from config import get_openai_client, get_default_model
+from config import get_openai_client, get_default_model, with_retry
 
 
 # Prompt template for sentiment classification
@@ -54,14 +54,17 @@ def sentiment_predict(text: str) -> str:
     # Format the prompt
     prompt = SENTIMENT_PROMPT.format(text=text)
 
-    # Call OpenAI API
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=150
-    )
+    # Call OpenAI API with retry logic
+    def make_api_call():
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=150
+        )
+        return response.choices[0].message.content
+
+    raw_output = with_retry(make_api_call)
 
     # Parse and return the result
-    raw_output = response.choices[0].message.content
     return parse_sentiment(raw_output)

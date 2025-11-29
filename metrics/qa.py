@@ -1,7 +1,9 @@
 """Question answering metrics."""
 
-from mlflow.genai.judges import make_judge
-from typing import Dict, Literal
+from mlflow.genai.judges import make_judge, CategoricalRating
+from mlflow.genai import scorer
+from mlflow.entities import Feedback
+from typing import Dict, Literal, Any
 
 
 def qa_accuracy(gold: Dict, pred: str) -> bool:
@@ -21,20 +23,25 @@ def qa_accuracy(gold: Dict, pred: str) -> bool:
     return expected == predicted
 
 
-def qa_scorer(predictions: str, targets: Dict) -> float:
+@scorer
+def qa_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
-    MLflow scorer for question answering.
+    MLflow scorer for question answering (for GEPA optimization).
 
     Args:
-        predictions: Model prediction (answer string)
-        targets: Dictionary with expectations
+        outputs: Model prediction (answer string)
+        expectations: Dictionary with expected values
 
     Returns:
-        1.0 if correct, 0.0 if incorrect
+        Feedback with categorical rating
     """
-    expected = str(targets.get("answer", "")).lower().strip()
-    predicted = str(predictions).lower().strip()
-    return 1.0 if expected == predicted else 0.0
+    expected = str(expectations.get("answer", "")).lower().strip()
+    predicted = str(outputs).lower().strip()
+
+    return Feedback(
+        name="qa_accuracy",
+        value=CategoricalRating.YES if expected == predicted else CategoricalRating.NO
+    )
 
 
 # Create MLflow metric using make_judge

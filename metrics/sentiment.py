@@ -1,7 +1,9 @@
 """Sentiment classification metrics."""
 
-from mlflow.genai.judges import make_judge
-from typing import Dict, Literal
+from mlflow.genai.judges import make_judge, CategoricalRating
+from mlflow.genai import scorer
+from mlflow.entities import Feedback
+from typing import Dict, Literal, Any
 
 
 def sentiment_accuracy(gold: Dict, pred: str) -> bool:
@@ -20,20 +22,25 @@ def sentiment_accuracy(gold: Dict, pred: str) -> bool:
     return expected == predicted
 
 
-def sentiment_scorer(predictions: str, targets: Dict) -> float:
+@scorer
+def sentiment_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
-    MLflow scorer for sentiment classification.
+    MLflow scorer for sentiment classification (for GEPA optimization).
 
     Args:
-        predictions: Model prediction (sentiment string)
-        targets: Dictionary with expectations
+        outputs: Model prediction (sentiment string)
+        expectations: Dictionary with expected values
 
     Returns:
-        1.0 if correct, 0.0 if incorrect
+        Feedback with categorical rating
     """
-    expected = targets.get("sentiment", "").lower()
-    predicted = predictions.lower()
-    return 1.0 if expected == predicted else 0.0
+    expected = str(expectations.get("sentiment", "")).lower().strip()
+    predicted = str(outputs).lower().strip()
+
+    return Feedback(
+        name="sentiment_accuracy",
+        value=CategoricalRating.YES if expected == predicted else CategoricalRating.NO
+    )
 
 
 # Create MLflow metric using make_judge

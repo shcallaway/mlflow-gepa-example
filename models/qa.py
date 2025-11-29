@@ -1,6 +1,6 @@
 """Question answering model using OpenAI API."""
 
-from config import get_openai_client, get_default_model
+from config import get_openai_client, get_default_model, with_retry
 
 
 # Prompt template for question answering
@@ -35,14 +35,14 @@ def qa_predict(question: str, context: str) -> str:
     # Format the prompt
     prompt = QA_PROMPT.format(question=question, context=context)
 
-    # Call OpenAI API
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=200
-    )
+    # Call OpenAI API with retry logic
+    def make_api_call():
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=200
+        )
+        return response.choices[0].message.content.strip()
 
-    # Extract and return the answer
-    answer = response.choices[0].message.content.strip()
-    return answer
+    return with_retry(make_api_call)

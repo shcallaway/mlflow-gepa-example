@@ -2,7 +2,7 @@
 
 A modular example demonstrating **GEPA (Generative Evolutionary Prompt Adaptation)** for prompt optimization using direct OpenAI API calls and MLflow integration.
 
-> **⚠️ Current Status**: This project has been migrated from DSPy to MLflow GEPA. The MLflow GEPA optimization is currently a **placeholder implementation**. Baseline evaluation works fully, but automatic prompt optimization requires additional MLflow GEPA setup. See [Limitations](#limitations) for details.
+> **✅ Status**: Fully functional! This project demonstrates complete MLflow GEPA integration with automatic prompt optimization. Run baseline evaluation or full GEPA optimization across multiple NLP tasks (sentiment classification, QA, math word problems).
 
 ## Quick Start
 
@@ -17,11 +17,11 @@ pip install -r requirements.txt
 # 3. Set your OpenAI API key
 export OPENAI_API_KEY='your-api-key-here'
 
-# 4. Run baseline evaluation (no optimization)
-python main.py --task sentiment --skip-optimization
-
-# Or run with GEPA optimization placeholder
+# 4. Run with GEPA optimization (may take several minutes)
 python main.py --task sentiment
+
+# Or run baseline evaluation only (faster)
+python main.py --task sentiment --skip-optimization
 ```
 
 ## Project Structure
@@ -68,11 +68,13 @@ This project uses direct OpenAI API calls with prompt templates for **multiple N
 - Implements thought-action-observation pattern
 - Includes calculator tool simulation
 
-### Current Workflow
+### Complete GEPA Workflow
 
-1. **Baseline Evaluation** - Test prompts with direct OpenAI API calls
-2. **GEPA Placeholder** - Shows intended MLflow GEPA integration (not functional)
-3. **Demo** - Test on new examples
+1. **Baseline Evaluation** - Test initial prompts with direct OpenAI API calls
+2. **GEPA Optimization** - Evolutionary prompt improvement using MLflow GEPA
+3. **Optimized Evaluation** - Test optimized prompts and compare to baseline
+4. **Results Comparison** - Automatic reporting of accuracy improvements
+5. **Demo** - Test on new examples
 
 The per-task file organization makes it easy to:
 - Understand what code belongs to which task
@@ -119,52 +121,59 @@ export OPENAI_API_KEY='your-api-key-here'  # Set API key
 ### Run Sentiment Classification (Default)
 
 ```bash
+# With GEPA optimization (takes a few minutes)
+python main.py --task sentiment
+
+# Baseline only (faster)
 python main.py --task sentiment --skip-optimization
 ```
-
-This will run baseline evaluation without attempting GEPA optimization.
 
 ### Run Question Answering
 
 ```bash
+# With GEPA optimization
+python main.py --task qa
+
+# Baseline only
 python main.py --task qa --skip-optimization
 ```
 
 ### Run Math Word Problems
 
 ```bash
+# With GEPA optimization
+python main.py --task math
+
+# Baseline only
 python main.py --task math --skip-optimization
 ```
 
-### Run with GEPA Placeholder
+The optimization process will:
+1. Evaluate baseline prompt
+2. Run GEPA evolutionary optimization (several minutes)
+3. Evaluate optimized prompt
+4. Show comparison and improvement
 
-```bash
-python main.py --task sentiment
-```
+## Features
 
-This will show the intended GEPA workflow but won't actually optimize prompts (placeholder implementation).
+### Fully Implemented ✅
 
-## Limitations
-
-### MLflow GEPA Integration Status
-
-The current implementation includes:
 - ✅ Direct OpenAI API calls with prompt templates
-- ✅ Baseline evaluation working fully
+- ✅ Baseline evaluation
 - ✅ Task registry architecture
-- ✅ MLflow metric definitions
-- ⚠️ GEPA optimization is a **placeholder** (see `main.py:119-165`)
+- ✅ MLflow GEPA optimizer integration
+- ✅ Automatic prompt evolution and optimization
+- ✅ Baseline vs optimized comparison
+- ✅ MLflow experiment tracking
+- ✅ Error handling with retry logic
+- ✅ Singleton OpenAI client pattern
+- ✅ Custom MLflow scorers for each task
 
-**What's Missing:**
-- Actual MLflow GEPA optimizer integration
-- Automatic prompt evolution
-- Optimized prompt comparison
+### Known Limitations
 
-**To complete GEPA integration**, you'll need to:
-1. Reference MLflow GEPA documentation (https://mlflow.org/docs/latest/genai/)
-2. Implement the actual optimizer call in `main.py`
-3. Configure reflection model for instruction generation
-4. Test prompt evolution on your datasets
+- Small datasets (for demo purposes - expand for production use)
+- Math ReAct limited to 5 iterations (configurable)
+- No automated tests yet
 
 ## Adding New Tasks
 
@@ -491,24 +500,27 @@ This means you've hit your OpenAI billing/usage cap:
 **Error: "Rate limit exceeded"**
 You're making too many requests per minute. Solutions:
 
-1. **Add retry logic** to predict functions (not currently implemented)
+1. **Retry logic is automatic** - The code includes exponential backoff retry logic
 
-2. **Reduce API call volume**:
+2. **Reduce API call volume** if retries aren't enough:
    - Use fewer training examples
-   - Reduce ReAct iterations in math task
-   - Add delays between requests
+   - Reduce ReAct iterations in math task (edit `models/math.py`)
+   - Reduce `gepa_max_calls` in `tasks.py`
 
-3. **Switch to models with higher rate limits**:
-   - `gpt-4o-mini` has generous rate limits for most tiers
+3. **Adjust retry settings** in `config.py`:
+   - Increase `initial_delay` parameter in `with_retry()` function
 
 **Understanding API Call Volume:**
 - Each example makes 1 API call
 - ReAct tasks (math) make multiple calls per example (up to `max_iters`)
 - When GEPA is implemented, it will test multiple prompt variations
 
-### MLflow GEPA Not Working
+### MLflow GEPA Taking Too Long
 
-This is expected. The MLflow GEPA optimization is a placeholder implementation. See [Limitations](#limitations) for details on what's needed to complete the integration.
+GEPA optimization involves evolutionary prompt improvement which can take several minutes. To speed up:
+- Use `--skip-optimization` for baseline-only evaluation
+- Reduce `gepa_max_calls` in `tasks.py` (trades thoroughness for speed)
+- Use smaller training datasets
 
 ## Migration Notes
 
@@ -518,7 +530,7 @@ This project was migrated from DSPy to direct OpenAI API calls with MLflow integ
 - No longer uses `dspy.Module` or `dspy.Signature`
 - Data format changed from `dspy.Example` to plain dictionaries
 - Models return strings instead of structured objects
-- GEPA optimization not functional (placeholder only)
+- GEPA optimization uses MLflow instead of DSPy
 
 ### What Was Preserved
 - Task registry architecture
@@ -544,20 +556,23 @@ If you need the original DSPy version, check the commit history before `89c3878`
 
 ## Contributing
 
-This is a starter template. Feel free to:
-- Complete the MLflow GEPA integration
-- Add error handling and retry logic
+This is a working demonstration of MLflow GEPA. Feel free to:
 - Add new tasks and datasets
 - Experiment with different prompts and models
 - Extend evaluation metrics
+- Improve optimization parameters
+- Add tests and benchmarks
 - Share your improvements!
 
 ## Roadmap
 
-- [ ] Complete MLflow GEPA optimizer integration
-- [ ] Add error handling for API calls
-- [ ] Implement singleton OpenAI client pattern
-- [ ] Add tests for accuracy functions
-- [ ] Add more example tasks
-- [ ] Document GEPA optimization workflow
+- [x] Complete MLflow GEPA optimizer integration
+- [x] Add error handling for API calls with retry logic
+- [x] Implement singleton OpenAI client pattern
+- [x] Add MLflow experiment tracking
+- [x] Add baseline vs optimized comparison
+- [ ] Add unit tests for accuracy functions
+- [ ] Add integration tests for GEPA workflow
+- [ ] Add more example tasks (summarization, translation, etc.)
+- [ ] Expand datasets with more examples
 - [ ] Add logging and debugging utilities

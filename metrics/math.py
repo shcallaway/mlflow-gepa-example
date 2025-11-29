@@ -1,7 +1,9 @@
 """Math word problem metrics."""
 
-from mlflow.genai.judges import make_judge
-from typing import Dict, Literal
+from mlflow.genai.judges import make_judge, CategoricalRating
+from mlflow.genai import scorer
+from mlflow.entities import Feedback
+from typing import Dict, Literal, Any
 
 
 def math_accuracy(gold: Dict, pred: str) -> bool:
@@ -38,35 +40,48 @@ def math_accuracy(gold: Dict, pred: str) -> bool:
         return str(gold.get("expectations", {}).get("answer", "")).lower().strip() == str(pred).lower().strip()
 
 
-def math_scorer(predictions: str, targets: Dict) -> float:
+@scorer
+def math_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
-    MLflow scorer for math word problems.
+    MLflow scorer for math word problems (for GEPA optimization).
 
     Args:
-        predictions: Model prediction (numeric answer string)
-        targets: Dictionary with expectations
+        outputs: Model prediction (numeric answer string)
+        expectations: Dictionary with expected values
 
     Returns:
-        1.0 if correct, 0.0 if incorrect
+        Feedback with categorical rating
     """
     try:
-        expected = str(targets.get("answer", "")).strip()
-        predicted = str(predictions).strip()
+        expected = str(expectations.get("answer", "")).strip()
+        predicted = str(outputs).strip()
 
         # Try exact string match
         if expected.lower() == predicted.lower():
-            return 1.0
+            return Feedback(
+                name="math_accuracy",
+                value=CategoricalRating.YES
+            )
 
         # Try numerical comparison
         expected_num = float(expected)
         predicted_num = float(predicted)
 
         # Use small tolerance for floating point comparison
-        return 1.0 if abs(expected_num - predicted_num) < 1e-6 else 0.0
+        is_correct = abs(expected_num - predicted_num) < 1e-6
+
+        return Feedback(
+            name="math_accuracy",
+            value=CategoricalRating.YES if is_correct else CategoricalRating.NO
+        )
 
     except (ValueError, AttributeError):
         # Fall back to string comparison
-        return 1.0 if str(targets.get("answer", "")).lower().strip() == str(predictions).lower().strip() else 0.0
+        is_correct = str(expectations.get("answer", "")).lower().strip() == str(outputs).lower().strip()
+        return Feedback(
+            name="math_accuracy",
+            value=CategoricalRating.YES if is_correct else CategoricalRating.NO
+        )
 
 
 # Create MLflow metric using make_judge
