@@ -55,11 +55,11 @@ def create_predict_wrapper(task_config: Dict, prompt_uri: str = None) -> Callabl
     input_fields = task_config["input_fields"]
 
     @mlflow.trace
-    def wrapper(inputs: Dict) -> str:
-        """Wrapper that unpacks dict inputs to function kwargs."""
-        # Extract just the input fields from the inputs dict
-        kwargs = {field: inputs[field] for field in input_fields if field in inputs}
-        return predict_fn(**kwargs)
+    def wrapper(**kwargs) -> str:
+        """Wrapper that accepts inputs as keyword arguments."""
+        # Extract just the input fields needed for this task
+        filtered_kwargs = {field: kwargs[field] for field in input_fields if field in kwargs}
+        return predict_fn(**filtered_kwargs)
 
     return wrapper
 
