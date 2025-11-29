@@ -1,6 +1,7 @@
-"""Math word problem solver using ReAct."""
+"""Math word problem solver using ReAct pattern."""
 
-import dspy
+import re
+from config import get_openai_client, get_default_model
 
 
 def calculate(expression: str) -> str:
@@ -42,38 +43,124 @@ def calculate(expression: str) -> str:
         return f"Error: {str(e)}"
 
 
-class MathWordProblem(dspy.Signature):
-    """Solve a math word problem by reasoning and using a calculator tool."""
+# ReAct prompt template for math word problems
+MATH_REACT_PROMPT = """Solve this math word problem step by step using the ReAct (Reasoning and Acting) approach.
 
-    problem: str = dspy.InputField(desc="A math word problem in natural language")
-    answer: str = dspy.OutputField(desc="The numerical answer to the problem")
+Problem: {problem}
+
+You can use the calculate(expression) tool to evaluate mathematical expressions.
+
+Use this exact format:
+Thought: [Your reasoning about what to do next]
+Action: calculate(expression) [Only if you need to compute something]
+Observation: [The result will be provided here]
+... (You can repeat Thought/Action/Observation if needed)
+Thought: [Final reasoning leading to the answer]
+Answer: [Just the numeric result, nothing else]
+
+Available tool:
+- calculate(expression): Evaluates a mathematical expression and returns the numeric result
+
+Begin solving!
+
+{history}"""
 
 
-class MathSolver(dspy.Module):
+# Regex patterns for parsing
+ACTION_PATTERN = r'Action:\s*calculate\((.*?)\)'
+ANSWER_PATTERN = r'Answer:\s*([0-9.]+)'
+
+
+def extract_calculation(text: str) -> str:
     """
-    Math word problem solver using ReAct with calculator tool.
+    Extract the calculation expression from an Action line.
 
-    This module takes a word problem as input and uses ReAct (Reasoning and Acting)
-    to solve it by breaking down the problem, performing calculations using the
-    calculator tool, and generating the final numerical answer.
+    Args:
+        text: The LLM response containing "Action: calculate(...)"
+
+    Returns:
+        The expression to calculate, or empty string if not found
     """
+    match = re.search(ACTION_PATTERN, text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""
 
-    def __init__(self):
-        super().__init__()
-        self.react = dspy.ReAct(
-            signature=MathWordProblem,
-            tools=[calculate],
-            max_iters=2  # Reduced to 2 iterations to minimize LLM calls
+
+def extract_answer(text: str) -> str:
+    """
+    Extract the final answer from the response.
+
+    Args:
+        text: The LLM response containing "Answer: X"
+
+    Returns:
+        The extracted numeric answer, or the stripped text as fallback
+    """
+    match = re.search(ANSWER_PATTERN, text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    # Fallback: look for "Answer:" and take the next line or token
+    answer_idx = text.lower().find("answer:")
+    if answer_idx != -1:
+        after_answer = text[answer_idx + 7:].strip()
+        # Take first token/line
+        first_token = after_answer.split()[0] if after_answer.split() else after_answer
+        # Remove non-numeric characters
+        numeric = re.sub(r'[^0-9.]', '', first_token)
+        if numeric:
+            return numeric
+
+    # Last resort: return stripped text
+    return text.strip()
+
+
+def math_predict(problem: str) -> str:
+    """
+    Solve a math word problem using ReAct pattern.
+
+    Args:
+        problem: The math word problem to solve
+
+    Returns:
+        The predicted numeric answer
+    """
+    client = get_openai_client()
+    model = get_default_model()
+
+    conversation = []
+    max_iterations = 2
+
+    for i in range(max_iterations):
+        # Format the prompt with current conversation history
+        prompt = MATH_REACT_PROMPT.format(
+            problem=problem,
+            history="\n".join(conversation)
         )
 
-    def forward(self, problem):
-        """
-        Solve a math word problem using ReAct.
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=500
+        )
 
-        Args:
-            problem: The word problem to solve
+        text = response.choices[0].message.content
 
-        Returns:
-            Prediction with answer field
-        """
-        return self.react(problem=problem)
+        # Check if there's a tool call (Action: calculate(...))
+        if "calculate(" in text.lower():
+            expr = extract_calculation(text)
+            if expr:
+                # Execute the calculation
+                result = calculate(expr)
+                # Add to conversation history
+                conversation.append(text)
+                conversation.append(f"Observation: {result}")
+                continue
+
+        # Check for final answer
+        if "answer:" in text.lower():
+            return extract_answer(text)
+
+    # If we exit the loop without finding an answer, try to extract anyway
+    return extract_answer(text)

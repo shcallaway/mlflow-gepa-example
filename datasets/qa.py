@@ -1,7 +1,6 @@
 """Question answering dataset."""
 
-import dspy
-from typing import List, Tuple
+from typing import List, Dict, Tuple
 
 
 TRAIN_DATA = [
@@ -19,16 +18,26 @@ DEV_DATA = [
 ]
 
 
-def get_data():
-    """Get question answering train and dev datasets."""
+def get_data() -> Tuple[List[Dict], List[Dict]]:
+    """
+    Get question answering train and dev datasets.
+
+    Returns:
+        Tuple of (train_data, dev_data) where each is a list of dicts with format:
+        {"inputs": {"question": "...", "context": "..."}, "expectations": {"answer": "..."}}
+    """
     train = []
     for q, ctx, ans in TRAIN_DATA:
-        ex = dspy.Example(question=q, context=ctx, answer=ans)
-        train.append(ex.with_inputs("question", "context"))
+        train.append({
+            "inputs": {"question": q, "context": ctx},
+            "expectations": {"answer": ans}
+        })
 
     dev = []
     for q, ctx, ans in DEV_DATA:
-        ex = dspy.Example(question=q, context=ctx, answer=ans)
-        dev.append(ex.with_inputs("question", "context"))
+        dev.append({
+            "inputs": {"question": q, "context": ctx},
+            "expectations": {"answer": ans}
+        })
 
     return train, dev

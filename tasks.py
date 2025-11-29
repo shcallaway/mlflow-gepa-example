@@ -1,8 +1,10 @@
-"""Task registry and configuration for DSPy GEPA examples."""
+"""Task registry and configuration for MLflow GEPA examples."""
 
 from datasets import get_sentiment_data, get_qa_data, get_math_data
-from models import SentimentClassifier, QAModule, MathSolver
+from models import sentiment_predict, qa_predict, math_predict
+from models import SENTIMENT_PROMPT, QA_PROMPT, MATH_REACT_PROMPT
 from metrics import sentiment_accuracy, qa_accuracy, math_accuracy
+from metrics import sentiment_metric, qa_metric, math_metric
 
 
 # Task Configuration Registry
@@ -10,27 +12,36 @@ TASKS = {
     "sentiment": {
         "name": "Sentiment Classification",
         "get_data": get_sentiment_data,
-        "model_class": SentimentClassifier,
-        "metric": sentiment_accuracy,
-        "gepa_auto": "light",  # Light optimization for simple task
+        "predict_fn": sentiment_predict,
+        "prompt_template": SENTIMENT_PROMPT,
+        "prompt_name": "sentiment_classifier",
+        "metric": sentiment_metric,
+        "accuracy_fn": sentiment_accuracy,
+        "gepa_max_calls": 100,
         "input_fields": ["text"],
         "output_field": "sentiment",
     },
     "qa": {
         "name": "Question Answering",
         "get_data": get_qa_data,
-        "model_class": QAModule,
-        "metric": qa_accuracy,
-        "gepa_auto": "medium",  # Medium optimization for multi-input task
+        "predict_fn": qa_predict,
+        "prompt_template": QA_PROMPT,
+        "prompt_name": "qa_model",
+        "metric": qa_metric,
+        "accuracy_fn": qa_accuracy,
+        "gepa_max_calls": 120,
         "input_fields": ["question", "context"],
         "output_field": "answer",
     },
     "math": {
         "name": "Math Word Problems (ReAct)",
         "get_data": get_math_data,
-        "model_class": MathSolver,
-        "metric": math_accuracy,
-        "gepa_auto": "light",  # Light optimization to reduce LLM call volume
+        "predict_fn": math_predict,
+        "prompt_template": MATH_REACT_PROMPT,
+        "prompt_name": "math_react_solver",
+        "metric": math_metric,
+        "accuracy_fn": math_accuracy,
+        "gepa_max_calls": 80,
         "input_fields": ["problem"],
         "output_field": "answer",
     },

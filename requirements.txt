@@ -1,2 +1,2 @@
-dspy>=2.5.0
+mlflow>=3.5.0
 openai>=1.0.0

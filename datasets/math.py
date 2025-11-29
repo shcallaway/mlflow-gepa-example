@@ -1,7 +1,6 @@
 """Math word problem dataset."""
 
-import dspy
-from typing import List, Tuple
+from typing import List, Dict, Tuple
 
 
 TRAIN_DATA = [
@@ -21,16 +20,26 @@ DEV_DATA = [
 ]
 
 
-def get_data():
-    """Get math word problem train and dev datasets."""
+def get_data() -> Tuple[List[Dict], List[Dict]]:
+    """
+    Get math word problem train and dev datasets.
+
+    Returns:
+        Tuple of (train_data, dev_data) where each is a list of dicts with format:
+        {"inputs": {"problem": "..."}, "expectations": {"answer": "..."}}
+    """
     train = []
     for problem, answer in TRAIN_DATA:
-        ex = dspy.Example(problem=problem, answer=answer)
-        train.append(ex.with_inputs("problem"))
+        train.append({
+            "inputs": {"problem": problem},
+            "expectations": {"answer": answer}
+        })
 
     dev = []
     for problem, answer in DEV_DATA:
-        ex = dspy.Example(problem=problem, answer=answer)
-        dev.append(ex.with_inputs("problem"))
+        dev.append({
+            "inputs": {"problem": problem},
+            "expectations": {"answer": answer}
+        })
 
     return train, dev

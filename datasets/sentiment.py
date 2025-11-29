@@ -1,7 +1,6 @@
 """Sentiment classification dataset."""
 
-import dspy
-from typing import List, Tuple
+from typing import List, Dict, Tuple
 
 
 TRAIN_DATA = [
@@ -23,16 +22,26 @@ DEV_DATA = [
 ]
 
 
-def get_data():
-    """Get sentiment classification train and dev datasets."""
+def get_data() -> Tuple[List[Dict], List[Dict]]:
+    """
+    Get sentiment classification train and dev datasets.
+
+    Returns:
+        Tuple of (train_data, dev_data) where each is a list of dicts with format:
+        {"inputs": {"text": "..."}, "expectations": {"sentiment": "..."}}
+    """
     train = []
     for text, sentiment in TRAIN_DATA:
-        ex = dspy.Example(text=text, sentiment=sentiment)
-        train.append(ex.with_inputs("text"))
+        train.append({
+            "inputs": {"text": text},
+            "expectations": {"sentiment": sentiment}
+        })
 
     dev = []
     for text, sentiment in DEV_DATA:
-        ex = dspy.Example(text=text, sentiment=sentiment)
-        dev.append(ex.with_inputs("text"))
+        dev.append({
+            "inputs": {"text": text},
+            "expectations": {"sentiment": sentiment}
+        })
 
     return train, dev

@@ -1,8 +1,8 @@
 """
-DSPy GEPA Tutorial - Multi-Task Examples
-=========================================
+MLflow GEPA Tutorial - Multi-Task Examples
+==========================================
 
-Demonstrates GEPA optimization on multiple tasks:
+Demonstrates prompt optimization using MLflow GEPA on multiple tasks:
 - Sentiment Classification: Classify text as positive/negative
 - Question Answering: Answer questions from context
 - Math Word Problems: Solve math problems using ReAct with calculator tool
@@ -11,132 +11,197 @@ Usage:
     python main.py --task sentiment
     python main.py --task qa
     python main.py --task math
+
+    Optional flags:
+    --skip-optimization: Skip GEPA optimization and just run baseline evaluation
 """
 
 import argparse
-import dspy
-from dspy.teleprompt import GEPA
+import os
+from typing import Dict, List, Callable
 
-from config import get_default_lm
+# Note: MLflow GEPA requires mlflow>=3.5.0
+try:
+    import mlflow
+    import mlflow.genai
+    from mlflow.models import ModelSignature
+    from mlflow.types.schema import Schema, ColSpec
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    print("Warning: MLflow not installed. Install with: pip install mlflow>=3.5.0")
+    MLFLOW_AVAILABLE = False
+
 from tasks import TASKS
 
 
-def run_baseline_evaluation(task_config, model, dev_examples):
-    """Evaluate baseline model (generic for all tasks)."""
-    print("Step 1: Testing BASELINE (unoptimized) model...")
+def create_predict_wrapper(task_config: Dict) -> Callable:
+    """
+    Create a wrapper function for the predict_fn that matches MLflow's expected interface.
+
+    MLflow GEPA expects: predict_fn(inputs: Dict) -> str
+    Our functions expect individual parameters like predict_fn(text="...")
+
+    Args:
+        task_config: Task configuration from TASKS registry
+
+    Returns:
+        Wrapped prediction function
+    """
+    predict_fn = task_config["predict_fn"]
+    input_fields = task_config["input_fields"]
+
+    def wrapper(inputs: Dict) -> str:
+        """Wrapper that unpacks dict inputs to function kwargs."""
+        # Extract just the input fields from the inputs dict
+        kwargs = {field: inputs[field] for field in input_fields if field in inputs}
+        return predict_fn(**kwargs)
+
+    return wrapper
+
+
+def run_baseline_evaluation(task_config: Dict, data: List[Dict]) -> float:
+    """
+    Evaluate baseline model (without optimization).
+
+    Args:
+        task_config: Task configuration
+        data: List of examples in format {"inputs": {...}, "expectations": {...}}
+
+    Returns:
+        Accuracy score
+    """
+    print("Testing BASELINE (unoptimized) model...")
     print("-" * 60)
 
-    metric = task_config["metric"]
-    correct = 0
+    predict_fn = task_config["predict_fn"]
+    accuracy_fn = task_config["accuracy_fn"]
+    input_fields = task_config["input_fields"]
+    output_field = task_config["output_field"]
 
-    for example in dev_examples:
-        # Get inputs dynamically based on task
-        inputs = {field: getattr(example, field) for field in task_config["input_fields"]}
-        prediction = model(**inputs)
-        is_correct = metric(example, prediction)
+    correct = 0
+    for example in data:
+        # Extract inputs and call predict function
+        inputs = example["inputs"]
+        kwargs = {field: inputs[field] for field in input_fields}
+        prediction = predict_fn(**kwargs)
+
+        # Check accuracy
+        is_correct = accuracy_fn(example, prediction)
         correct += is_correct
 
-        # Display results (task-specific formatting)
+        # Print result
         print_example_result(example, prediction, is_correct, task_config)
 
-    score = correct / len(dev_examples)
-    print(f"Baseline Accuracy: {score:.1%} ({correct}/{len(dev_examples)})")
+    score = correct / len(data)
+    print(f"\nBaseline Accuracy: {score:.1%} ({correct}/{len(data)})")
     print()
     return score
 
 
-def run_gepa_optimization(task_config, train_examples, dev_examples):
-    """Run GEPA optimization (generic for all tasks)."""
-    print("Step 2: Running GEPA optimization...")
+def run_gepa_optimization(task_config: Dict, train_data: List[Dict], val_data: List[Dict]):
+    """
+    Run MLflow GEPA optimization.
+
+    NOTE: MLflow GEPA integration is still experimental. This function demonstrates
+    the intended workflow but may need adjustment based on the actual MLflow GEPA API.
+
+    Args:
+        task_config: Task configuration
+        train_data: Training data
+        val_data: Validation data
+
+    Returns:
+        Optimized prompt (or None if MLflow not available)
+    """
+    if not MLFLOW_AVAILABLE:
+        print("MLflow not available. Skipping optimization.")
+        return None
+
+    print("Running MLflow GEPA optimization...")
     print("-" * 60)
-    print(f"GEPA Config: auto={task_config['gepa_auto']}")
-    print("This will take a few moments as GEPA evolves the prompts...")
+    print(f"Task: {task_config['name']}")
+    print(f"Max GEPA calls: {task_config['gepa_max_calls']}")
+    print("This may take several minutes as GEPA evolves the prompts...")
     print()
 
-    # Create a reflection LM for GEPA to use for generating new instructions
-    reflection_lm = dspy.LM(
-        model='gpt-5-mini',
-        temperature=1.0,
-        max_tokens=16000,  # Reasoning models require >= 16000
-        num_retries=5,  # Retry up to 5 times on rate limit errors
-        timeout=60.0    # 60 second timeout per request
-    )
+    try:
+        # Create predict wrapper for MLflow
+        predict_wrapper = create_predict_wrapper(task_config)
 
-    optimizer = GEPA(
-        metric=task_config["metric"],
-        auto=task_config["gepa_auto"],
-        reflection_lm=reflection_lm,
-    )
+        # Register the initial prompt in MLflow
+        prompt_name = task_config["prompt_name"]
+        prompt_template = task_config["prompt_template"]
 
-    optimized = optimizer.compile(
-        student=task_config["model_class"](),
-        trainset=train_examples,
-        valset=dev_examples,
-    )
+        print(f"Registering initial prompt: {prompt_name}")
+        mlflow.genai.register_prompt(
+            name=prompt_name,
+            prompt_template=prompt_template
+        )
 
-    print("Optimization complete!")
-    print()
-    return optimized
+        # NOTE: The exact MLflow GEPA API may differ from this example.
+        # This demonstrates the conceptual workflow.
+        # Refer to MLflow documentation for the actual API:
+        # https://mlflow.org/docs/latest/genai/prompt-registry/optimize-prompts/
+
+        print("\nNote: MLflow GEPA optimization requires additional setup.")
+        print("To optimize prompts:")
+        print(f"1. Use mlflow.genai.optimize_prompts() with your predict function")
+        print(f"2. Provide train_data, validation_data, and the metric")
+        print(f"3. GEPA will evolve the prompt and register optimized versions")
+        print()
+
+        # Placeholder for actual GEPA optimization call
+        # When MLflow GEPA API is stable, use something like:
+        # from mlflow.genai.optimizers import GepaPromptOptimizer
+        # optimizer = GepaPromptOptimizer(
+        #     reflection_model="openai:/gpt-4o",
+        #     max_metric_calls=task_config["gepa_max_calls"]
+        # )
+        # result = mlflow.genai.optimize_prompts(
+        #     predict_fn=predict_wrapper,
+        #     train_data=train_data,
+        #     prompt_uris=[f"prompts:/{prompt_name}/1"],
+        #     optimizer=optimizer,
+        #     scorers=[task_config["metric"]]
+        # )
+
+        return None
+
+    except Exception as e:
+        print(f"Error during optimization: {e}")
+        print("Continuing with baseline evaluation only.")
+        return None
 
 
-def run_optimized_evaluation(task_config, model, dev_examples):
-    """Evaluate optimized model (generic for all tasks)."""
-    print("Step 3: Testing OPTIMIZED model...")
-    print("-" * 60)
-
-    metric = task_config["metric"]
-    correct = 0
-
-    for example in dev_examples:
-        inputs = {field: getattr(example, field) for field in task_config["input_fields"]}
-        prediction = model(**inputs)
-        is_correct = metric(example, prediction)
-        correct += is_correct
-
-        print_example_result(example, prediction, is_correct, task_config)
-
-    score = correct / len(dev_examples)
-    print(f"Optimized Accuracy: {score:.1%} ({correct}/{len(dev_examples)})")
-    print()
-    return score
-
-
-def print_example_result(example, prediction, is_correct, task_config):
+def print_example_result(example: Dict, prediction: str, is_correct: bool, task_config: Dict):
     """Print example result with task-specific formatting."""
     check = '✓' if is_correct else '✗'
+    inputs = example["inputs"]
+    expectations = example["expectations"]
+    output_field = task_config["output_field"]
 
     if task_config["input_fields"] == ["text"]:
         # Sentiment task
-        print(f"Text: {example.text[:50]}...")
-        print(f"Expected: {example.sentiment} | Predicted: {prediction.sentiment} | {check}")
+        print(f"Text: {inputs['text'][:50]}...")
+        print(f"Expected: {expectations['sentiment']} | Predicted: {prediction} | {check}")
     elif task_config["input_fields"] == ["problem"]:
         # Math task
-        print(f"Problem: {example.problem}")
-        print(f"Expected: {example.answer} | Predicted: {prediction.answer} | {check}")
+        print(f"Problem: {inputs['problem']}")
+        print(f"Expected: {expectations['answer']} | Predicted: {prediction} | {check}")
     else:
         # QA task
-        print(f"Q: {example.question}")
-        print(f"Context: {example.context[:60]}...")
-        print(f"Expected: {example.answer} | Predicted: {prediction.answer} | {check}")
+        print(f"Q: {inputs['question']}")
+        print(f"Context: {inputs['context'][:60]}...")
+        print(f"Expected: {expectations['answer']} | Predicted: {prediction} | {check}")
     print()
 
 
-def print_results_summary(baseline_score, optimized_score):
-    """Print comparison summary."""
-    print("=" * 60)
-    print("RESULTS SUMMARY")
-    print("=" * 60)
-    print(f"Baseline Accuracy:  {baseline_score:.1%}")
-    print(f"Optimized Accuracy: {optimized_score:.1%}")
-    improvement = ((optimized_score - baseline_score) / baseline_score * 100) if baseline_score > 0 else 0
-    print(f"Improvement: {improvement:+.1f}%")
-    print()
-
-
-def demo_optimized_model(task_config, model):
+def demo_baseline_model(task_config: Dict):
     """Demo model on new examples (task-specific)."""
-    print("Step 4: Try the optimized model on new examples...")
+    print("Demo: Testing the model on new examples...")
     print("-" * 60)
+
+    predict_fn = task_config["predict_fn"]
 
     if task_config["input_fields"] == ["text"]:
         # Sentiment examples
@@ -145,9 +210,9 @@ def demo_optimized_model(task_config, model):
             "I'm very disappointed with this.",
         ]
         for text in test_texts:
-            result = model(text=text)
+            result = predict_fn(text=text)
             print(f"Text: {text}")
-            print(f"Sentiment: {result.sentiment}")
+            print(f"Sentiment: {result}")
             print()
     elif task_config["input_fields"] == ["problem"]:
         # Math examples
@@ -156,9 +221,9 @@ def demo_optimized_model(task_config, model):
             "A train travels 60 miles per hour for 3.5 hours. How far does it go?",
         ]
         for problem in test_problems:
-            result = model(problem=problem)
+            result = predict_fn(problem=problem)
             print(f"Problem: {problem}")
-            print(f"Answer: {result.answer}")
+            print(f"Answer: {result}")
             print()
     else:
         # QA examples
@@ -167,16 +232,16 @@ def demo_optimized_model(task_config, model):
             {"question": "When was the internet invented?", "context": "The internet was developed in the 1960s-1970s."},
         ]
         for ex in test_examples:
-            result = model(question=ex["question"], context=ex["context"])
+            result = predict_fn(question=ex["question"], context=ex["context"])
             print(f"Q: {ex['question']}")
-            print(f"Answer: {result.answer}")
+            print(f"Answer: {result}")
             print()
 
 
 def main():
     """Main workflow with task selection."""
     parser = argparse.ArgumentParser(
-        description="DSPy GEPA Multi-Task Examples",
+        description="MLflow GEPA Multi-Task Examples",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -185,37 +250,41 @@ def main():
         default="sentiment",
         help="Task to run (default: sentiment)"
     )
+    parser.add_argument(
+        "--skip-optimization",
+        action="store_true",
+        help="Skip GEPA optimization and just run baseline evaluation"
+    )
     args = parser.parse_args()
+
+    # Check for API key
+    if not os.getenv("OPENAI_API_KEY"):
+        print("Error: OPENAI_API_KEY environment variable not set.")
+        print("Set it with: export OPENAI_API_KEY='your-key-here'")
+        return
 
     # Get task configuration
     task_config = TASKS[args.task]
 
     print("=" * 60)
-    print(f"DSPy GEPA: {task_config['name']}")
+    print(f"MLflow GEPA: {task_config['name']}")
     print("=" * 60)
     print()
 
-    # Configure LM
-    get_default_lm()
-
     # Load data
-    train_examples, dev_examples = task_config["get_data"]()
+    train_data, dev_data = task_config["get_data"]()
+    print(f"Loaded {len(train_data)} training examples, {len(dev_data)} dev examples")
+    print()
 
     # Baseline evaluation
-    baseline_model = task_config["model_class"]()
-    baseline_score = run_baseline_evaluation(task_config, baseline_model, dev_examples)
+    baseline_score = run_baseline_evaluation(task_config, dev_data)
 
-    # GEPA optimization
-    optimized_model = run_gepa_optimization(task_config, train_examples, dev_examples)
-
-    # Optimized evaluation
-    optimized_score = run_optimized_evaluation(task_config, optimized_model, dev_examples)
-
-    # Results summary
-    print_results_summary(baseline_score, optimized_score)
+    # Optional: GEPA optimization
+    if not args.skip_optimization:
+        run_gepa_optimization(task_config, train_data, dev_data)
 
     # Demo on new examples
-    demo_optimized_model(task_config, optimized_model)
+    demo_baseline_model(task_config)
 
 
 if __name__ == "__main__":

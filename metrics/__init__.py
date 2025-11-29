@@ -1,14 +1,14 @@
 """Evaluation metrics for all tasks."""
 
-from .sentiment import accuracy as sentiment_accuracy
-from .qa import accuracy as qa_accuracy
-from .math import accuracy as math_accuracy
-from .common import exact_match, evaluate_model
+from .sentiment import sentiment_accuracy, sentiment_metric
+from .qa import qa_accuracy, qa_metric
+from .math import math_accuracy, math_metric
 
 __all__ = [
     "sentiment_accuracy",
+    "sentiment_metric",
     "qa_accuracy",
+    "qa_metric",
     "math_accuracy",
-    "exact_match",
-    "evaluate_model",
+    "math_metric",
 ]

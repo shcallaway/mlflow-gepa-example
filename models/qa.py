@@ -1,37 +1,48 @@
-"""Question answering models."""
+"""Question answering model using OpenAI API."""
 
-import dspy
-
-
-class QuestionAnswering(dspy.Signature):
-    """Answer a question based on provided context."""
-
-    question: str = dspy.InputField(desc="The question to answer")
-    context: str = dspy.InputField(desc="Context containing the answer")
-    answer: str = dspy.OutputField(desc="Concise answer to the question")
+from config import get_openai_client, get_default_model
 
 
-class QAModule(dspy.Module):
+# Prompt template for question answering
+QA_PROMPT = """Answer the question based on the provided context. Provide a concise and accurate answer.
+
+Context: {context}
+
+Question: {question}
+
+Let's think step by step:
+1. Identify the relevant information in the context
+2. Extract the key facts that answer the question
+3. Formulate a clear and concise answer
+
+Answer:"""
+
+
+def qa_predict(question: str, context: str) -> str:
     """
-    Question answering using Chain of Thought reasoning.
+    Answer a question based on the provided context.
 
-    This module takes a question and context as inputs and generates
-    a concise answer based on the provided context.
+    Args:
+        question: The question to answer
+        context: The context passage containing the answer
+
+    Returns:
+        The predicted answer
     """
+    client = get_openai_client()
+    model = get_default_model()
 
-    def __init__(self):
-        super().__init__()
-        self.qa = dspy.ChainOfThought(QuestionAnswering)
+    # Format the prompt
+    prompt = QA_PROMPT.format(question=question, context=context)
 
-    def forward(self, question, context):
-        """
-        Answer a question based on context.
+    # Call OpenAI API
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        max_tokens=200
+    )
 
-        Args:
-            question: The question to answer
-            context: The context passage
-
-        Returns:
-            Prediction with answer field
-        """
-        return self.qa(question=question, context=context)
+    # Extract and return the answer
+    answer = response.choices[0].message.content.strip()
+    return answer

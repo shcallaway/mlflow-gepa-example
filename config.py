@@ -1,69 +1,46 @@
 """
-Configuration for DSPy language models.
+Configuration for OpenAI API client.
 """
 
 import os
-import dspy
+from openai import OpenAI
 
 
-def configure_lm(
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
-    api_key: str = None,
-    **kwargs
-):
+def get_openai_client(api_key: str = None, **kwargs):
     """
-    Configure the DSPy language model.
+    Get an OpenAI API client instance.
 
     Args:
-        provider: LLM provider (e.g., 'openai', 'anthropic', 'together')
-        model: Model name (e.g., 'gpt-4o-mini', 'claude-3-5-sonnet-20241022')
-        api_key: Optional API key (defaults to environment variable)
-        **kwargs: Additional arguments for the LM
+        api_key: Optional API key (defaults to OPENAI_API_KEY environment variable)
+        **kwargs: Additional arguments for the OpenAI client
 
     Returns:
-        Configured DSPy LM instance
+        OpenAI client instance
     """
-    # Construct the model string
-    if "/" in model:
-        model_string = model
-    else:
-        model_string = f"{provider}/{model}"
+    if api_key is None:
+        api_key = os.getenv("OPENAI_API_KEY")
 
-    # Create and configure the LM
-    lm = dspy.LM(model_string, **kwargs)
-    dspy.configure(lm=lm)
+    if not api_key:
+        raise ValueError(
+            "OpenAI API key not found. Set OPENAI_API_KEY environment variable "
+            "or pass api_key parameter."
+        )
 
-    return lm
+    return OpenAI(api_key=api_key, **kwargs)
 
 
-def get_default_lm():
+def get_default_model():
     """
-    Get the default language model configuration.
-    Uses OpenAI GPT-5-mini by default with retry logic for rate limits.
+    Get the default model name.
 
-    Set OPENAI_API_KEY environment variable before running.
+    Returns:
+        Default model string for OpenAI API
     """
-    return configure_lm(
-        provider="openai",
-        model="gpt-5-mini",
-        num_retries=5,  # Retry up to 5 times on rate limit errors
-        timeout=60.0    # 60 second timeout per request
-    )
+    return "gpt-4o-mini"
 
 
-# Example configurations for different providers
-PROVIDER_CONFIGS = {
-    "openai": {
-        "model": "gpt-5-mini",
-        "env_var": "OPENAI_API_KEY"
-    },
-    "anthropic": {
-        "model": "claude-3-5-sonnet-20241022",
-        "env_var": "ANTHROPIC_API_KEY"
-    },
-    "together": {
-        "model": "meta-llama/Llama-3-70b-chat-hf",
-        "env_var": "TOGETHER_API_KEY"
-    }
+# Model configurations
+MODEL_CONFIGS = {
+    "default": "gpt-4o-mini",
+    "reflection": "gpt-4o",  # Used for GEPA instruction generation
 }
