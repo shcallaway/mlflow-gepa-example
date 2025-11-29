@@ -1,7 +1,7 @@
 """Sentiment classification metrics."""
 
-from mlflow.metrics.genai import EvaluationExample, make_genai_metric
-from typing import Dict
+from mlflow.genai.judges import make_judge
+from typing import Dict, Literal
 
 
 def sentiment_accuracy(gold: Dict, pred: str) -> bool:
@@ -36,35 +36,17 @@ def sentiment_scorer(predictions: str, targets: Dict) -> float:
     return 1.0 if expected == predicted else 0.0
 
 
-# Create MLflow metric using make_genai_metric
-sentiment_metric = make_genai_metric(
+# Create MLflow metric using make_judge
+sentiment_metric = make_judge(
     name="sentiment_accuracy",
-    definition=(
-        "Sentiment accuracy measures whether the predicted sentiment "
-        "(positive or negative) matches the expected sentiment."
+    instructions=(
+        "Evaluate whether the predicted sentiment matches the expected sentiment.\n\n"
+        "Text: {{ inputs }}\n"
+        "Predicted Sentiment: {{ outputs }}\n"
+        "Expected Sentiment: {{ expectations }}\n\n"
+        "Compare the predicted sentiment with the expected sentiment (case-insensitive).\n"
+        "Return 'correct' if they match, 'incorrect' otherwise."
     ),
-    grading_prompt=(
-        "Compare the predicted sentiment with the expected sentiment. "
-        "Return 1 if they match (case-insensitive), 0 otherwise."
-    ),
-    examples=[
-        EvaluationExample(
-            input="This movie was great!",
-            output="positive",
-            score=1,
-            justification="Predicted 'positive' matches expected 'positive'"
-        ),
-        EvaluationExample(
-            input="Terrible experience.",
-            output="positive",
-            score=0,
-            justification="Predicted 'positive' but expected 'negative'"
-        ),
-    ],
-    version="v1",
+    feedback_value_type=Literal["correct", "incorrect"],
     model="openai:/gpt-4o-mini",
-    grading_context_columns=[],
-    parameters={"temperature": 0.0},
-    aggregations=["mean", "variance", "p90"],
-    greater_is_better=True,
 )

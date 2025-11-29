@@ -1,7 +1,7 @@
 """Math word problem metrics."""
 
-from mlflow.metrics.genai import EvaluationExample, make_genai_metric
-from typing import Dict
+from mlflow.genai.judges import make_judge
+from typing import Dict, Literal
 
 
 def math_accuracy(gold: Dict, pred: str) -> bool:
@@ -69,41 +69,19 @@ def math_scorer(predictions: str, targets: Dict) -> float:
         return 1.0 if str(targets.get("answer", "")).lower().strip() == str(predictions).lower().strip() else 0.0
 
 
-# Create MLflow metric using make_genai_metric
-math_metric = make_genai_metric(
+# Create MLflow metric using make_judge
+math_metric = make_judge(
     name="math_accuracy",
-    definition=(
-        "Math accuracy measures whether the predicted numeric answer "
-        "matches the expected answer, with tolerance for floating point differences."
+    instructions=(
+        "Evaluate whether the predicted numeric answer matches the expected answer.\n\n"
+        "Problem: {{ inputs }}\n"
+        "Predicted Answer: {{ outputs }}\n"
+        "Expected Answer: {{ expectations }}\n\n"
+        "Compare the predicted answer with the expected answer numerically.\n"
+        "Consider them matching if they are equal when converted to numbers, "
+        "allowing for minor floating point differences (e.g., '25' and '25.0' are the same).\n"
+        "Return 'correct' if they match, 'incorrect' otherwise."
     ),
-    grading_prompt=(
-        "Compare the predicted numeric answer with the expected answer. "
-        "Return 1 if they match (allowing for minor floating point differences), 0 otherwise."
-    ),
-    examples=[
-        EvaluationExample(
-            input="What is 5 + 3?",
-            output="8",
-            score=1,
-            justification="Predicted '8' matches expected '8'"
-        ),
-        EvaluationExample(
-            input="What is 100 / 4?",
-            output="25.0",
-            score=1,
-            justification="Predicted '25.0' matches expected '25' numerically"
-        ),
-        EvaluationExample(
-            input="What is 10 * 5?",
-            output="45",
-            score=0,
-            justification="Predicted '45' but expected '50'"
-        ),
-    ],
-    version="v1",
+    feedback_value_type=Literal["correct", "incorrect"],
     model="openai:/gpt-4o-mini",
-    grading_context_columns=[],
-    parameters={"temperature": 0.0},
-    aggregations=["mean", "variance", "p90"],
-    greater_is_better=True,
 )
