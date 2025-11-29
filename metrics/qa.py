@@ -6,7 +6,7 @@ from mlflow.entities import Feedback
 from typing import Dict, Literal, Any
 
 
-def qa_accuracy(gold: Dict, pred: str) -> bool:
+def accuracy(gold: Dict, pred: str) -> bool:
     """
     Check if predicted answer matches expected answer.
     Uses case-insensitive exact match.
@@ -24,7 +24,7 @@ def qa_accuracy(gold: Dict, pred: str) -> bool:
 
 
 @scorer
-def qa_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
+def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
     MLflow scorer for question answering (for GEPA optimization).
 
@@ -45,7 +45,7 @@ def qa_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
 
 
 # Create MLflow metric using make_judge
-qa_metric = make_judge(
+metric = make_judge(
     name="qa_accuracy",
     instructions=(
         "Evaluate whether the predicted answer matches the expected answer.\n\n"

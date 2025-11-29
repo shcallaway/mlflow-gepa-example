@@ -6,7 +6,7 @@ from mlflow.entities import Feedback
 from typing import Dict, Literal, Any
 
 
-def math_accuracy(gold: Dict, pred: str) -> bool:
+def accuracy(gold: Dict, pred: str) -> bool:
     """
     Check if predicted answer matches expected answer numerically.
 
@@ -41,7 +41,7 @@ def math_accuracy(gold: Dict, pred: str) -> bool:
 
 
 @scorer
-def math_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
+def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
     MLflow scorer for math word problems (for GEPA optimization).
 
@@ -85,7 +85,7 @@ def math_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
 
 
 # Create MLflow metric using make_judge
-math_metric = make_judge(
+metric = make_judge(
     name="math_accuracy",
     instructions=(
         "Evaluate whether the predicted numeric answer matches the expected answer.\n\n"

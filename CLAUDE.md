@@ -54,6 +54,48 @@ The entire application is built around a **task registry pattern** (`tasks.py`).
 
 This registry drives the generic workflow in `main.py`, allowing new tasks to be added without modifying the core evaluation logic.
 
+### Standardized Export Convention
+
+**IMPORTANT**: All task files follow a consistent naming convention where each task exports the **same named members** without task-specific prefixes. This makes the codebase more maintainable and easier to understand.
+
+#### Per-Task File Exports
+
+Each task has three files that export standardized names:
+
+**`models/{task}.py`** exports:
+- `predict` - The prediction function (no prefix like `sentiment_predict`)
+- `PROMPT` - The prompt template constant (no prefix like `SENTIMENT_PROMPT`)
+
+**`metrics/{task}.py`** exports:
+- `accuracy` - Accuracy evaluation function (no prefix like `sentiment_accuracy`)
+- `scorer_fn` - MLflow scorer for GEPA optimization (no prefix like `sentiment_scorer`)
+- `metric` - MLflow judge metric (no prefix like `sentiment_metric`)
+
+**`datasets/{task}.py`** exports:
+- `get_data` - Dataset loader function (already consistent across all tasks)
+
+#### How It Works
+
+The `__init__.py` files in each directory import with aliases for use in `tasks.py`:
+
+```python
+# models/__init__.py
+from .sentiment import predict as sentiment_predict, PROMPT as SENTIMENT_PROMPT
+from .qa import predict as qa_predict, PROMPT as QA_PROMPT
+from .math import predict as math_predict, PROMPT as MATH_REACT_PROMPT
+
+# metrics/__init__.py
+from .sentiment import accuracy as sentiment_accuracy, scorer_fn as sentiment_scorer, metric as sentiment_metric
+from .qa import accuracy as qa_accuracy, scorer_fn as qa_scorer, metric as qa_metric
+from .math import accuracy as math_accuracy, scorer_fn as math_scorer, metric as math_metric
+```
+
+This approach provides:
+- **Consistency**: Every task file has the same export names
+- **Clarity**: When reading a task file, you see standard names (`predict`, `accuracy`, `metric`)
+- **Backwards compatibility**: The `__init__.py` aliases maintain compatibility with `tasks.py`
+- **Easier maintenance**: Adding new tasks follows the same pattern
+
 ### Key Architectural Components
 
 **1. Task Configuration (`tasks.py`)**
@@ -113,16 +155,68 @@ All experiments tracked in MLflow with automatic logging enabled.
 
 ### Adding New Tasks
 
-To add a task, create 3 files:
+To add a task, create 3 files following the **standardized naming convention**:
 
-1. `datasets/your_task.py` - Define data and `get_data()` loader
-2. `models/your_task.py` - Define prompt template and `predict()` function
-3. `metrics/your_task.py` - Define `accuracy()` and MLflow metric
-
-Then register in `tasks.py`:
+#### 1. `datasets/your_task.py`
+Define data and export `get_data()` loader:
 ```python
-from models import your_task_predict
-from metrics import your_task_accuracy, your_task_metric
+def get_data() -> Tuple[List[Dict], List[Dict]]:
+    # Return (train_data, dev_data)
+    pass
+```
+
+#### 2. `models/your_task.py`
+Export `PROMPT` template and `predict()` function (no task prefix):
+```python
+# Prompt template constant
+PROMPT = """Your prompt template here with {field1} and {field2}"""
+
+def predict(field1: str, field2: str) -> str:
+    """Task-specific prediction function."""
+    # Implementation
+    pass
+```
+
+#### 3. `metrics/your_task.py`
+Export `accuracy`, `scorer_fn`, and `metric` (no task prefix):
+```python
+def accuracy(gold: Dict, pred: str) -> bool:
+    """Accuracy evaluation function."""
+    pass
+
+@scorer
+def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
+    """MLflow scorer for GEPA optimization."""
+    pass
+
+metric = make_judge(
+    name="your_task_accuracy",
+    # ... metric definition
+)
+```
+
+#### 4. Update `__init__.py` files
+Add imports with aliases:
+
+`datasets/__init__.py`:
+```python
+from .your_task import get_data as get_your_task_data
+```
+
+`models/__init__.py`:
+```python
+from .your_task import predict as your_task_predict, PROMPT as YOUR_TASK_PROMPT
+```
+
+`metrics/__init__.py`:
+```python
+from .your_task import accuracy as your_task_accuracy, scorer_fn as your_task_scorer, metric as your_task_metric
+```
+
+#### 5. Register in `tasks.py`
+```python
+from models import your_task_predict, YOUR_TASK_PROMPT
+from metrics import your_task_accuracy, your_task_metric, your_task_scorer
 from datasets import get_your_task_data
 
 TASKS = {
@@ -130,18 +224,17 @@ TASKS = {
         "name": "Your Task Name",
         "get_data": get_your_task_data,
         "predict_fn": your_task_predict,
-        "accuracy_fn": your_task_accuracy,
+        "prompt_template": YOUR_TASK_PROMPT,
+        "prompt_name": "your_task_prompt",
         "metric": your_task_metric,
+        "scorer": your_task_scorer,
+        "accuracy_fn": your_task_accuracy,
         "gepa_max_calls": 20,
         "input_fields": ["field1", "field2"],
         "output_field": "output",
-        "prompt_name": "your_task_prompt",
-        "prompt_template": "Your prompt template here",
     },
 }
 ```
-
-Update `__init__.py` files in each directory to export your new functions/classes.
 
 ## Important Implementation Details
 
@@ -289,6 +382,11 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 - Document functions with docstrings
 - Follow the task registry pattern for new tasks
 - Keep task code isolated in per-task files
+- **Use standardized export names** (see Standardized Export Convention section):
+  - models/*.py: Export `predict` and `PROMPT` (no task prefix)
+  - metrics/*.py: Export `accuracy`, `scorer_fn`, and `metric` (no task prefix)
+  - datasets/*.py: Export `get_data`
+  - __init__.py files: Import with task-specific aliases
 - Use the standard data format: `{"inputs": {...}, "expectations": {...}}`
 - Predict functions should return strings
 - Accuracy functions should take `(gold: Dict, pred: str)` and return `bool`

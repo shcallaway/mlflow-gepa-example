@@ -4,7 +4,7 @@ from config import get_openai_client, get_default_model, with_retry
 
 
 # Prompt template for sentiment classification
-SENTIMENT_PROMPT = """Classify the sentiment of the following text as either 'positive' or 'negative'.
+PROMPT = """Classify the sentiment of the following text as either 'positive' or 'negative'.
 
 Text: {text}
 
@@ -38,7 +38,7 @@ def parse_sentiment(text: str) -> str:
     return text.strip().split('\n')[0].strip()
 
 
-def sentiment_predict(text: str) -> str:
+def predict(text: str) -> str:
     """
     Predict the sentiment of the given text.
 
@@ -52,7 +52,7 @@ def sentiment_predict(text: str) -> str:
     model = get_default_model()
 
     # Format the prompt
-    prompt = SENTIMENT_PROMPT.format(text=text)
+    prompt = PROMPT.format(text=text)
 
     # Call OpenAI API with retry logic
     def make_api_call():

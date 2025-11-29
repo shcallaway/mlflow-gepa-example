@@ -4,7 +4,7 @@ from config import get_openai_client, get_default_model, with_retry
 
 
 # Prompt template for question answering
-QA_PROMPT = """Answer the question based on the provided context. Provide a concise and accurate answer.
+PROMPT = """Answer the question based on the provided context. Provide a concise and accurate answer.
 
 Context: {context}
 
@@ -18,7 +18,7 @@ Let's think step by step:
 Answer:"""
 
 
-def qa_predict(question: str, context: str) -> str:
+def predict(question: str, context: str) -> str:
     """
     Answer a question based on the provided context.
 
@@ -33,7 +33,7 @@ def qa_predict(question: str, context: str) -> str:
     model = get_default_model()
 
     # Format the prompt
-    prompt = QA_PROMPT.format(question=question, context=context)
+    prompt = PROMPT.format(question=question, context=context)
 
     # Call OpenAI API with retry logic
     def make_api_call():

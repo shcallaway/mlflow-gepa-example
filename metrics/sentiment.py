@@ -6,7 +6,7 @@ from mlflow.entities import Feedback
 from typing import Dict, Literal, Any
 
 
-def sentiment_accuracy(gold: Dict, pred: str) -> bool:
+def accuracy(gold: Dict, pred: str) -> bool:
     """
     Check if predicted sentiment matches expected sentiment.
 
@@ -23,7 +23,7 @@ def sentiment_accuracy(gold: Dict, pred: str) -> bool:
 
 
 @scorer
-def sentiment_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
+def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
     """
     MLflow scorer for sentiment classification (for GEPA optimization).
 
@@ -44,7 +44,7 @@ def sentiment_scorer(outputs: str, expectations: Dict[str, Any]) -> Feedback:
 
 
 # Create MLflow metric using make_judge
-sentiment_metric = make_judge(
+metric = make_judge(
     name="sentiment_accuracy",
     instructions=(
         "Evaluate whether the predicted sentiment matches the expected sentiment.\n\n"

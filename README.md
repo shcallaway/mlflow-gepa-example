@@ -177,7 +177,20 @@ The optimization process will:
 
 ## Adding New Tasks
 
-The per-task file organization makes adding new tasks straightforward. Each task needs 3 files:
+The per-task file organization makes adding new tasks straightforward. **IMPORTANT**: Follow the standardized naming convention where all task files export the same named members without task-specific prefixes.
+
+### Standardized Export Convention
+
+Each task exports consistent names:
+- **`models/{task}.py`**: `predict`, `PROMPT`
+- **`metrics/{task}.py`**: `accuracy`, `scorer_fn`, `metric`
+- **`datasets/{task}.py`**: `get_data`
+
+The `__init__.py` files import these with task-specific aliases (e.g., `predict as sentiment_predict`) for use in `tasks.py`. This ensures consistency across all tasks while maintaining clean imports.
+
+### Creating a New Task
+
+Each task needs 3 files:
 
 ### 1. Add Your Dataset
 
@@ -227,15 +240,15 @@ __all__ = [..., "get_your_task_data"]
 
 ### 2. Define Your Model
 
-Create `models/your_task.py`:
+Create `models/your_task.py` (use standardized names `PROMPT` and `predict`):
 
 ```python
 """Your task models."""
 
-from config import get_openai_client, get_default_model
+from config import get_openai_client, get_default_model, with_retry
 
-# Define your prompt template
-YOUR_TASK_PROMPT = """You are an expert at [task description].
+# Define your prompt template (named PROMPT, not YOUR_TASK_PROMPT)
+PROMPT = """You are an expert at [task description].
 
 Input: {input}
 
@@ -254,35 +267,39 @@ def predict(input: str) -> str:
     client = get_openai_client()
     model = get_default_model()
 
-    prompt = YOUR_TASK_PROMPT.format(input=input)
+    prompt = PROMPT.format(input=input)
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-    )
+    def make_api_call():
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+        )
+        return response.choices[0].message.content.strip()
 
-    return response.choices[0].message.content.strip()
+    return with_retry(make_api_call)
 ```
 
-Update `models/__init__.py`:
+Update `models/__init__.py` (import with alias):
 ```python
-from .your_task import predict as your_task_predict
+from .your_task import predict as your_task_predict, PROMPT as YOUR_TASK_PROMPT
 
-__all__ = [..., "your_task_predict"]
+__all__ = [..., "your_task_predict", "YOUR_TASK_PROMPT"]
 ```
 
 ### 3. Add Evaluation Metric
 
-Create `metrics/your_task.py`:
+Create `metrics/your_task.py` (use standardized names `accuracy`, `scorer_fn`, `metric`):
 
 ```python
 """Your task metrics."""
 
-from typing import Dict
-from mlflow.metrics.genai import EvaluationExample, make_genai_metric
+from typing import Dict, Literal, Any
+from mlflow.genai.judges import make_judge, CategoricalRating
+from mlflow.genai import scorer
+from mlflow.entities import Feedback
 
-def your_task_accuracy(gold: Dict, pred: str) -> bool:
+def accuracy(gold: Dict, pred: str) -> bool:
     """
     Check if prediction is correct.
 
@@ -297,33 +314,46 @@ def your_task_accuracy(gold: Dict, pred: str) -> bool:
     predicted = str(pred).lower().strip()
     return expected == predicted
 
-# Create MLflow metric
-your_task_metric = make_genai_metric(
+@scorer
+def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
+    """
+    MLflow scorer for GEPA optimization.
+
+    Args:
+        outputs: Model prediction
+        expectations: Expected values
+
+    Returns:
+        Feedback with categorical rating
+    """
+    expected = str(expectations.get("output", "")).lower().strip()
+    predicted = str(outputs).lower().strip()
+
+    return Feedback(
+        name="your_task_accuracy",
+        value=CategoricalRating.YES if expected == predicted else CategoricalRating.NO
+    )
+
+# Create MLflow metric using make_judge
+metric = make_judge(
     name="your_task_accuracy",
-    definition="Accuracy for your task",
-    grading_prompt="Compare predicted with expected output. Return 1 if match, 0 otherwise.",
-    examples=[
-        EvaluationExample(
-            input="example input",
-            output="example output",
-            score=1,
-            justification="Correct match"
-        ),
-    ],
-    version="v1",
+    instructions=(
+        "Evaluate whether the predicted output matches the expected output.\n\n"
+        "Input: {{ inputs }}\n"
+        "Predicted: {{ outputs }}\n"
+        "Expected: {{ expectations }}\n\n"
+        "Return 'correct' if they match, 'incorrect' otherwise."
+    ),
+    feedback_value_type=Literal["correct", "incorrect"],
     model="openai:/gpt-4o-mini",
-    grading_context_columns=[],
-    parameters={"temperature": 0.0},
-    aggregations=["mean", "variance", "p90"],
-    greater_is_better=True,
 )
 ```
 
-Update `metrics/__init__.py`:
+Update `metrics/__init__.py` (import with aliases):
 ```python
-from .your_task import your_task_accuracy, your_task_metric
+from .your_task import accuracy as your_task_accuracy, scorer_fn as your_task_scorer, metric as your_task_metric
 
-__all__ = [..., "your_task_accuracy", "your_task_metric"]
+__all__ = [..., "your_task_accuracy", "your_task_scorer", "your_task_metric"]
 ```
 
 ### 4. Register in tasks.py
@@ -331,8 +361,8 @@ __all__ = [..., "your_task_accuracy", "your_task_metric"]
 Add to the `TASKS` dictionary in `tasks.py`:
 
 ```python
-from models import your_task_predict
-from metrics import your_task_accuracy, your_task_metric
+from models import your_task_predict, YOUR_TASK_PROMPT
+from metrics import your_task_accuracy, your_task_metric, your_task_scorer
 from datasets import get_your_task_data
 
 TASKS = {
@@ -341,13 +371,14 @@ TASKS = {
         "name": "Your Task Name",
         "get_data": get_your_task_data,
         "predict_fn": your_task_predict,
-        "accuracy_fn": your_task_accuracy,
+        "prompt_template": YOUR_TASK_PROMPT,
+        "prompt_name": "your_task_prompt",
         "metric": your_task_metric,
+        "scorer": your_task_scorer,
+        "accuracy_fn": your_task_accuracy,
         "gepa_max_calls": 20,  # Max optimization iterations
         "input_fields": ["input"],
         "output_field": "output",
-        "prompt_name": "your_task_prompt",
-        "prompt_template": "...",  # Your prompt template
     },
 }
 ```
@@ -356,6 +387,14 @@ Then run:
 ```bash
 python main.py --task your_task --skip-optimization
 ```
+
+### Why Standardized Names?
+
+This naming convention provides:
+- **Consistency**: All task files export the same member names
+- **Clarity**: Reading any task file shows familiar exports (`predict`, `accuracy`, `metric`)
+- **Maintainability**: New tasks follow the same pattern
+- **Clean code**: Individual task files are self-contained with standard interfaces
 
 ## Architecture Overview
 

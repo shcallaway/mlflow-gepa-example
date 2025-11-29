@@ -44,7 +44,7 @@ def calculate(expression: str) -> str:
 
 
 # ReAct prompt template for math word problems
-MATH_REACT_PROMPT = """Solve this math word problem step by step using the ReAct (Reasoning and Acting) approach.
+PROMPT = """Solve this math word problem step by step using the ReAct (Reasoning and Acting) approach.
 
 Problem: {problem}
 
@@ -114,7 +114,7 @@ def extract_answer(text: str) -> str:
     return text.strip()
 
 
-def math_predict(problem: str) -> str:
+def predict(problem: str) -> str:
     """
     Solve a math word problem using ReAct pattern.
 
@@ -132,7 +132,7 @@ def math_predict(problem: str) -> str:
 
     for i in range(max_iterations):
         # Format the prompt with current conversation history
-        prompt = MATH_REACT_PROMPT.format(
+        prompt = PROMPT.format(
             problem=problem,
             history="\n".join(conversation)
         )

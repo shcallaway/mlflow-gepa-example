@@ -16,4 +16,7 @@ ENV/
 
 # OS
 .DS_Store
+
+# MLflow
 mlruns/
+mlflow.db
