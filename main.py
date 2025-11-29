@@ -19,6 +19,11 @@ Usage:
 import argparse
 import os
 from typing import Dict, List, Callable
+import warnings
+
+# Suppress MLflow integration warnings
+os.environ['MLFLOW_GENAI_EVAL_SKIP_TRACE_VALIDATION'] = 'True'
+warnings.filterwarnings('ignore', message='.*prompts were not used during evaluation.*')
 
 # Note: MLflow GEPA requires mlflow>=3.5.0
 try:
