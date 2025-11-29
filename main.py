@@ -331,6 +331,8 @@ def main():
 
     # Set up MLflow experiment tracking
     if MLFLOW_AVAILABLE:
+        # Use SQLite backend instead of deprecated filesystem backend
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
         experiment_name = f"GEPA-{task_config['name'].replace(' ', '-')}"
         mlflow.set_experiment(experiment_name)
         mlflow.openai.autolog()
