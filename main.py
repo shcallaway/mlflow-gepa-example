@@ -20,6 +20,14 @@ import argparse
 import os
 from typing import Dict, List, Callable
 import warnings
+import logging
+
+# Suppress MLflow and Alembic database logs BEFORE importing mlflow
+# Disable propagation for these loggers to prevent their messages from showing
+for logger_name in ['mlflow', 'alembic', 'mlflow.store.db.utils', 'alembic.runtime.migration']:
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.ERROR)
+    logger.propagate = False
 
 # Suppress MLflow integration warnings
 os.environ['MLFLOW_GENAI_EVAL_SKIP_TRACE_VALIDATION'] = 'True'
@@ -336,6 +344,14 @@ def main():
 
     # Set up MLflow experiment tracking
     if MLFLOW_AVAILABLE:
+        # Suppress MLflow/Alembic logs one more time right before tracking URI setup
+        for logger_name in ['mlflow', 'alembic', 'mlflow.store.db.utils', 'alembic.runtime.migration']:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.ERROR)
+            logger.propagate = False
+            # Remove all handlers to prevent any output
+            logger.handlers = []
+
         # Use SQLite backend instead of deprecated filesystem backend
         mlflow.set_tracking_uri("sqlite:///mlflow.db")
         experiment_name = f"GEPA-{task_config['name'].replace(' ', '-')}"

@@ -51,72 +51,31 @@ mlflow-gepa-example/
 
 ## What This Project Demonstrates
 
-This project uses direct OpenAI API calls with prompt templates for **multiple NLP tasks**:
+**Three NLP Tasks:**
+- **Sentiment Classification** - Classify text as positive/negative with structured prompts
+- **Question Answering** - Answer questions from context (multi-input task)
+- **Math Word Problems** - Solve math with ReAct loop and calculator tool
 
-### Sentiment Classification
-- Classify text as positive or negative
-- Single-input task demonstrating basic prompt engineering
-- Uses GPT-4o-mini with structured prompts
+**Complete GEPA Workflow:**
+1. Baseline evaluation with direct OpenAI API calls
+2. Evolutionary prompt optimization using MLflow GEPA
+3. Optimized evaluation and automatic comparison
+4. Interactive demo on new examples
 
-### Question Answering
-- Answer questions based on context
-- Multi-input task (question + context)
-- Demonstrates prompt composition
-
-### Math Word Problems
-- Solve math problems using manual ReAct loop
-- Implements thought-action-observation pattern
-- Includes calculator tool simulation
-
-### Complete GEPA Workflow
-
-1. **Baseline Evaluation** - Test initial prompts with direct OpenAI API calls
-2. **GEPA Optimization** - Evolutionary prompt improvement using MLflow GEPA
-3. **Optimized Evaluation** - Test optimized prompts and compare to baseline
-4. **Results Comparison** - Automatic reporting of accuracy improvements
-5. **Demo** - Test on new examples
-
-The per-task file organization makes it easy to:
-- Understand what code belongs to which task
-- Add new tasks without touching existing ones
+**Benefits:**
+- Per-task file organization for easy extension
+- Add new tasks without modifying core logic
 - Experiment with different prompts and models
-- Transition to MLflow GEPA when ready
 
 ## Prerequisites
 
 - Python 3.9 or higher
-- OpenAI API key
-  - Get one at: https://platform.openai.com/api-keys
-- MLflow 3.5.0 or higher (for future GEPA integration)
-
-## Setup
-
-1. **Create a virtual environment (recommended):**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set your API key (required):**
-   ```bash
-   export OPENAI_API_KEY='your-api-key-here'
-   ```
-
-   **Note:** The script will not work without an API key set.
+- OpenAI API key ([get one here](https://platform.openai.com/api-keys))
+- MLflow 3.5.0+ (installed via requirements.txt)
 
 ## Usage
 
-**Note:** Make sure you've activated your virtual environment and set your API key before running!
-
-```bash
-source venv/bin/activate  # Activate virtual environment
-export OPENAI_API_KEY='your-api-key-here'  # Set API key
-```
+**Note:** Activate your virtual environment and set your API key before running (see Quick Start above).
 
 ### Run Sentiment Classification (Default)
 
@@ -177,196 +136,39 @@ The optimization process will:
 
 ## Adding New Tasks
 
-The per-task file organization makes adding new tasks straightforward. **IMPORTANT**: Follow the standardized naming convention where all task files export the same named members without task-specific prefixes.
+Adding a new task requires creating 3 files following the standardized naming convention. **See `datasets/sentiment.py`, `models/sentiment.py`, and `metrics/sentiment.py` as reference examples.**
 
 ### Standardized Export Convention
 
-Each task exports consistent names:
-- **`models/{task}.py`**: `predict`, `PROMPT`
+Each task exports consistent names (without task-specific prefixes):
+- **`models/{task}.py`**: `PROMPT`, `predict`
 - **`metrics/{task}.py`**: `accuracy`, `scorer_fn`, `metric`
 - **`datasets/{task}.py`**: `get_data`
 
-The `__init__.py` files import these with task-specific aliases (e.g., `predict as sentiment_predict`) for use in `tasks.py`. This ensures consistency across all tasks while maintaining clean imports.
+The `__init__.py` files import with task-specific aliases (e.g., `predict as sentiment_predict`).
 
-### Creating a New Task
+### Steps to Add a Task
 
-Each task needs 3 files:
+**1. Create `datasets/your_task.py`:**
+- Define `get_data()` returning `(train_data, dev_data)`
+- Format: `{"inputs": {...}, "expectations": {...}}`
+- Update `datasets/__init__.py` with import alias
 
-### 1. Add Your Dataset
+**2. Create `models/your_task.py`:**
+- Define `PROMPT` template with format placeholders
+- Define `predict(**kwargs) -> str` using OpenAI API
+- Use `with_retry()` for error handling
+- Update `models/__init__.py` with import aliases
 
-Create `datasets/your_task.py`:
+**3. Create `metrics/your_task.py`:**
+- Define `accuracy(gold: Dict, pred: str) -> bool`
+- Define `scorer_fn` with `@scorer` decorator for GEPA
+- Create MLflow `metric` using `make_judge()`
+- Update `metrics/__init__.py` with import aliases
 
+**4. Register in `tasks.py`:**
 ```python
-"""Your task dataset."""
-
-from typing import List, Dict, Tuple
-
-TRAIN_DATA = [
-    ("input 1", "output 1"),
-    ("input 2", "output 2"),
-    # ...
-]
-
-DEV_DATA = [
-    ("input 1", "output 1"),
-    # ...
-]
-
-def get_data() -> Tuple[List[Dict], List[Dict]]:
-    """Get your task train and dev datasets."""
-    train = []
-    for input_val, output_val in TRAIN_DATA:
-        train.append({
-            "inputs": {"input": input_val},
-            "expectations": {"output": output_val}
-        })
-
-    dev = []
-    for input_val, output_val in DEV_DATA:
-        dev.append({
-            "inputs": {"input": input_val},
-            "expectations": {"output": output_val}
-        })
-
-    return train, dev
-```
-
-Update `datasets/__init__.py`:
-```python
-from .your_task import get_data as get_your_task_data
-
-__all__ = [..., "get_your_task_data"]
-```
-
-### 2. Define Your Model
-
-Create `models/your_task.py` (use standardized names `PROMPT` and `predict`):
-
-```python
-"""Your task models."""
-
-from config import get_openai_client, get_default_model, with_retry
-
-# Define your prompt template (named PROMPT, not YOUR_TASK_PROMPT)
-PROMPT = """You are an expert at [task description].
-
-Input: {input}
-
-Provide your answer:"""
-
-def predict(input: str) -> str:
-    """
-    Predict output for the given input.
-
-    Args:
-        input: Input text
-
-    Returns:
-        Predicted output string
-    """
-    client = get_openai_client()
-    model = get_default_model()
-
-    prompt = PROMPT.format(input=input)
-
-    def make_api_call():
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-        )
-        return response.choices[0].message.content.strip()
-
-    return with_retry(make_api_call)
-```
-
-Update `models/__init__.py` (import with alias):
-```python
-from .your_task import predict as your_task_predict, PROMPT as YOUR_TASK_PROMPT
-
-__all__ = [..., "your_task_predict", "YOUR_TASK_PROMPT"]
-```
-
-### 3. Add Evaluation Metric
-
-Create `metrics/your_task.py` (use standardized names `accuracy`, `scorer_fn`, `metric`):
-
-```python
-"""Your task metrics."""
-
-from typing import Dict, Literal, Any
-from mlflow.genai.judges import make_judge, CategoricalRating
-from mlflow.genai import scorer
-from mlflow.entities import Feedback
-
-def accuracy(gold: Dict, pred: str) -> bool:
-    """
-    Check if prediction is correct.
-
-    Args:
-        gold: Dictionary with format {"inputs": {...}, "expectations": {...}}
-        pred: Predicted output string
-
-    Returns:
-        True if correct, False otherwise
-    """
-    expected = str(gold["expectations"]["output"]).lower().strip()
-    predicted = str(pred).lower().strip()
-    return expected == predicted
-
-@scorer
-def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
-    """
-    MLflow scorer for GEPA optimization.
-
-    Args:
-        outputs: Model prediction
-        expectations: Expected values
-
-    Returns:
-        Feedback with categorical rating
-    """
-    expected = str(expectations.get("output", "")).lower().strip()
-    predicted = str(outputs).lower().strip()
-
-    return Feedback(
-        name="your_task_accuracy",
-        value=CategoricalRating.YES if expected == predicted else CategoricalRating.NO
-    )
-
-# Create MLflow metric using make_judge
-metric = make_judge(
-    name="your_task_accuracy",
-    instructions=(
-        "Evaluate whether the predicted output matches the expected output.\n\n"
-        "Input: {{ inputs }}\n"
-        "Predicted: {{ outputs }}\n"
-        "Expected: {{ expectations }}\n\n"
-        "Return 'correct' if they match, 'incorrect' otherwise."
-    ),
-    feedback_value_type=Literal["correct", "incorrect"],
-    model="openai:/gpt-4o-mini",
-)
-```
-
-Update `metrics/__init__.py` (import with aliases):
-```python
-from .your_task import accuracy as your_task_accuracy, scorer_fn as your_task_scorer, metric as your_task_metric
-
-__all__ = [..., "your_task_accuracy", "your_task_scorer", "your_task_metric"]
-```
-
-### 4. Register in tasks.py
-
-Add to the `TASKS` dictionary in `tasks.py`:
-
-```python
-from models import your_task_predict, YOUR_TASK_PROMPT
-from metrics import your_task_accuracy, your_task_metric, your_task_scorer
-from datasets import get_your_task_data
-
 TASKS = {
-    # ... existing tasks ...
     "your_task": {
         "name": "Your Task Name",
         "get_data": get_your_task_data,
@@ -376,25 +178,17 @@ TASKS = {
         "metric": your_task_metric,
         "scorer": your_task_scorer,
         "accuracy_fn": your_task_accuracy,
-        "gepa_max_calls": 20,  # Max optimization iterations
-        "input_fields": ["input"],
+        "gepa_max_calls": 20,
+        "input_fields": ["input"],  # Adjust to your fields
         "output_field": "output",
     },
 }
 ```
 
-Then run:
+**5. Test:**
 ```bash
 python main.py --task your_task --skip-optimization
 ```
-
-### Why Standardized Names?
-
-This naming convention provides:
-- **Consistency**: All task files export the same member names
-- **Clarity**: Reading any task file shows familiar exports (`predict`, `accuracy`, `metric`)
-- **Maintainability**: New tasks follow the same pattern
-- **Clean code**: Individual task files are self-contained with standard interfaces
 
 ## Architecture Overview
 
@@ -479,21 +273,8 @@ Each task has its own metrics file:
 ### `main.py`
 - Generic evaluation functions that work with all tasks
 - Command-line interface for task selection
-- MLflow GEPA workflow (placeholder implementation)
-- Baseline evaluation fully functional
-
-## Expected Output
-
-Running any task with `--skip-optimization` will show:
-
-1. Baseline model performance on dev set
-2. Example-by-example predictions and correctness
-3. Overall accuracy score
-4. Demo predictions on new examples
-
-Running without `--skip-optimization` will additionally show:
-- MLflow GEPA placeholder message
-- Instructions for completing GEPA integration
+- Complete MLflow GEPA workflow with optimization
+- Baseline and optimized evaluation with comparison
 
 ## Troubleshooting
 
@@ -552,7 +333,7 @@ You're making too many requests per minute. Solutions:
 **Understanding API Call Volume:**
 - Each example makes 1 API call
 - ReAct tasks (math) make multiple calls per example (up to `max_iters`)
-- When GEPA is implemented, it will test multiple prompt variations
+- GEPA optimization tests multiple prompt variations (controlled by `gepa_max_calls`)
 
 ### MLflow GEPA Taking Too Long
 
@@ -561,30 +342,9 @@ GEPA optimization involves evolutionary prompt improvement which can take severa
 - Reduce `gepa_max_calls` in `tasks.py` (trades thoroughness for speed)
 - Use smaller training datasets
 
-## Migration Notes
+## Migration from DSPy
 
-This project was migrated from DSPy to direct OpenAI API calls with MLflow integration. Key changes:
-
-### Breaking Changes from DSPy Version
-- No longer uses `dspy.Module` or `dspy.Signature`
-- Data format changed from `dspy.Example` to plain dictionaries
-- Models return strings instead of structured objects
-- GEPA optimization uses MLflow instead of DSPy
-
-### What Was Preserved
-- Task registry architecture
-- Per-task file organization
-- Three example tasks (sentiment, qa, math)
-- Evaluation workflow structure
-
-### What's Different
-- Direct OpenAI API calls instead of DSPy abstraction
-- Manual prompt templates instead of DSPy signatures
-- Manual ReAct loop for math task (previously `dspy.ReAct`)
-- MLflow metrics instead of DSPy metrics
-- Simplified model interface
-
-If you need the original DSPy version, check the commit history before `89c3878`.
+This project was migrated from DSPy to direct OpenAI API calls + MLflow. Key changes: `dspy.Module` → `predict()` functions, `dspy.Example` → plain dicts, DSPy GEPA → MLflow GEPA. The task registry architecture was preserved. See commit `89c3878` for the original DSPy version.
 
 ## Learn More
 

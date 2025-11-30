@@ -10,18 +10,7 @@ This is a modular prompt optimization project demonstrating the **GEPA (Generati
 
 ## Common Commands
 
-### Setup and Installation
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set API key (required)
-export OPENAI_API_KEY='your-api-key-here'
-```
+> **Setup:** See README.md Quick Start section for installation and API key setup.
 
 ### Running Tasks
 ```bash
@@ -155,86 +144,16 @@ All experiments tracked in MLflow with automatic logging enabled.
 
 ### Adding New Tasks
 
-To add a task, create 3 files following the **standardized naming convention**:
+> **Full tutorial:** See README.md "Adding New Tasks" section for complete instructions.
 
-#### 1. `datasets/your_task.py`
-Define data and export `get_data()` loader:
-```python
-def get_data() -> Tuple[List[Dict], List[Dict]]:
-    # Return (train_data, dev_data)
-    pass
-```
+**Quick reference:** Each task requires 3 files (datasets, models, metrics) following the standardized naming convention:
+1. `datasets/your_task.py` - Export `get_data()` returning formatted train/dev data
+2. `models/your_task.py` - Export `PROMPT` and `predict(**kwargs) -> str`
+3. `metrics/your_task.py` - Export `accuracy`, `scorer_fn`, and `metric`
+4. Update each `__init__.py` with task-specific import aliases
+5. Register in `tasks.py` TASKS dictionary
 
-#### 2. `models/your_task.py`
-Export `PROMPT` template and `predict()` function (no task prefix):
-```python
-# Prompt template constant
-PROMPT = """Your prompt template here with {field1} and {field2}"""
-
-def predict(field1: str, field2: str) -> str:
-    """Task-specific prediction function."""
-    # Implementation
-    pass
-```
-
-#### 3. `metrics/your_task.py`
-Export `accuracy`, `scorer_fn`, and `metric` (no task prefix):
-```python
-def accuracy(gold: Dict, pred: str) -> bool:
-    """Accuracy evaluation function."""
-    pass
-
-@scorer
-def scorer_fn(outputs: str, expectations: Dict[str, Any]) -> Feedback:
-    """MLflow scorer for GEPA optimization."""
-    pass
-
-metric = make_judge(
-    name="your_task_accuracy",
-    # ... metric definition
-)
-```
-
-#### 4. Update `__init__.py` files
-Add imports with aliases:
-
-`datasets/__init__.py`:
-```python
-from .your_task import get_data as get_your_task_data
-```
-
-`models/__init__.py`:
-```python
-from .your_task import predict as your_task_predict, PROMPT as YOUR_TASK_PROMPT
-```
-
-`metrics/__init__.py`:
-```python
-from .your_task import accuracy as your_task_accuracy, scorer_fn as your_task_scorer, metric as your_task_metric
-```
-
-#### 5. Register in `tasks.py`
-```python
-from models import your_task_predict, YOUR_TASK_PROMPT
-from metrics import your_task_accuracy, your_task_metric, your_task_scorer
-from datasets import get_your_task_data
-
-TASKS = {
-    "your_task": {
-        "name": "Your Task Name",
-        "get_data": get_your_task_data,
-        "predict_fn": your_task_predict,
-        "prompt_template": YOUR_TASK_PROMPT,
-        "prompt_name": "your_task_prompt",
-        "metric": your_task_metric,
-        "scorer": your_task_scorer,
-        "accuracy_fn": your_task_accuracy,
-        "gepa_max_calls": 20,
-        "input_fields": ["field1", "field2"],
-        "output_field": "output",
-    },
-}
-```
+**Key pattern:** Each task file exports the same standard names (no task prefix), and `__init__.py` files provide the aliasing for use in `tasks.py`.
 
 ## Important Implementation Details
 
@@ -281,13 +200,13 @@ TASKS = {
 - Each judge includes: name, instructions (with template variables), feedback type, and model
 - Uses template syntax: `{{ inputs }}`, `{{ outputs }}`, `{{ expectations }}`
 - Metrics are defined alongside accuracy functions in `metrics/*.py`
-- Used for future GEPA integration and MLflow tracking
+- Used for GEPA optimization and MLflow experiment tracking
 
 ### OpenAI Client Configuration
-- `config.py` provides `get_openai_client()` for client instantiation
+- `config.py` provides `get_openai_client()` for client instantiation (singleton pattern)
 - `get_default_model()` returns the default model name ("gpt-4o-mini")
 - API keys read from `OPENAI_API_KEY` environment variable
-- **Note**: Current implementation creates a new client on each call (should be refactored to singleton)
+- Includes `with_retry()` wrapper for automatic error handling with exponential backoff
 
 ### Math Task - ReAct Implementation
 - `models/math.py` implements a manual ReAct (Reasoning + Acting) loop
@@ -357,24 +276,12 @@ This project was migrated from DSPy framework to direct OpenAI API calls. Key ch
 
 ## Troubleshooting
 
-### Common Issues
+> **See README.md Troubleshooting section** for complete guidance on API keys, rate limits, module errors, and GEPA optimization.
 
-**API Key Not Set**
-- Ensure `OPENAI_API_KEY` is exported: `export OPENAI_API_KEY='sk-...'`
-
-**MLflow GEPA Slow**
-- GEPA optimization can take several minutes as it evolves prompts
-- Use `--skip-optimization` flag for faster baseline-only evaluation
-- Reduce `gepa_max_calls` in `tasks.py` for faster (but less thorough) optimization
-
-**Rate Limits**
-- Automatic retry logic with exponential backoff is implemented
-- If you still hit rate limits, reduce number of training examples
-- Or increase `initial_delay` parameter in `config.py`
-
-**Module Not Found**
-- Activate virtual environment: `source venv/bin/activate`
-- Install dependencies: `pip install -r requirements.txt`
+**Quick tips:**
+- GEPA optimization: Use `--skip-optimization` for faster baseline-only runs
+- Rate limits: Automatic retry logic is implemented; reduce `gepa_max_calls` if needed
+- API errors: All API calls use `with_retry()` for exponential backoff
 
 ## Code Style and Conventions
 
